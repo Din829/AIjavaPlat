@@ -1,0 +1,43 @@
+-- =====================================================
+-- 社内業務サポートAIプラットフォーム 数据库初始化脚本
+-- =====================================================
+-- 此脚本用于创建应用所需的数据库表结构
+-- 使用IF NOT EXISTS语句确保表不会被重复创建
+-- 使用外键约束确保数据完整性
+-- 使用自动时间戳记录创建和更新时间
+
+-- 用户表
+-- 存储系统用户信息，包括登录凭证
+CREATE TABLE IF NOT EXISTS users (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,                                    -- 用户ID，自增主键
+    username VARCHAR(50) NOT NULL UNIQUE,                                    -- 用户名，唯一，用于登录
+    email VARCHAR(100) NOT NULL UNIQUE,                                      -- 电子邮件，唯一，可用于找回密码
+    password VARCHAR(255) NOT NULL,                                          -- 密码哈希值，不存储明文密码
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,                  -- 创建时间，自动设置为当前时间
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP  -- 更新时间，自动更新
+);
+
+-- API Token表
+-- 存储用户的AI服务API令牌
+CREATE TABLE IF NOT EXISTS api_tokens (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,                                    -- Token ID，自增主键
+    user_id BIGINT NOT NULL,                                                 -- 用户ID，外键关联users表
+    provider VARCHAR(50) NOT NULL,                                           -- 服务提供商，如"openai"
+    token_value VARCHAR(255) NOT NULL,                                       -- 加密存储的Token值
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,                  -- 创建时间
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,  -- 更新时间
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE             -- 外键约束，用户删除时级联删除Token
+);
+
+-- Prompt表
+-- 存储用户创建的AI提示模板
+CREATE TABLE IF NOT EXISTS prompts (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,                                    -- Prompt ID，自增主键
+    user_id BIGINT NOT NULL,                                                 -- 用户ID，外键关联users表
+    title VARCHAR(100) NOT NULL,                                             -- Prompt标题
+    content TEXT NOT NULL,                                                   -- Prompt内容
+    category VARCHAR(50),                                                    -- 分类，可为空
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,                  -- 创建时间
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,  -- 更新时间
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE             -- 外键约束，用户删除时级联删除Prompt
+);

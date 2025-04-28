@@ -1,0 +1,22 @@
+version: '3.8' # 或者更新的版本
+services:
+  mysql_db_for_aisp: # 服务名称，可以自定义
+    image: mysql:8.0 # 建议指定明确的版本，如 8.0 或最新稳定版
+    container_name: mysql_aisp_db # 容器名称
+    restart: always # 容器退出时总是尝试重启
+    environment:
+      MYSQL_ROOT_PASSWORD: q75946123 # !!! 修改为你自己的强密码 !!!
+      MYSQL_DATABASE: ai_support_platform_db # 数据库名，会自动创建
+      MYSQL_USER: aisp_user # !!! 自定义应用连接数据库的用户名 !!!
+      MYSQL_PASSWORD: q75946123 # !!! 修改为该用户的强密码 !!!
+    ports:
+      # 将主机的 33306 端口映射到容器的 3306 端口
+      # 使用非常高的端口号可以避免与本地已安装的 MySQL 冲突
+      - "33306:3306"
+    volumes:
+      # 数据持久化，将数据库文件存储在 Docker volume 中
+      - mysql_aisp_data:/var/lib/mysql
+    command: [--character-set-server=utf8mb4, --collation-server=utf8mb4_unicode_ci] # 设置数据库服务器默认字符集和排序规则
+
+volumes:
+  mysql_aisp_data: # 定义一个具名卷来存储数据
