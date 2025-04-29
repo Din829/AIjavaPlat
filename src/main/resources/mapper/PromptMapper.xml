@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ding.aiplatjava.mapper.PromptMapper">
+
+    <!-- 由于开启了 mapUnderscoreToCamelCase，不需要显式 ResultMap -->
+
+    <!-- 根据ID查询Prompt -->
+    <select id="selectById" resultType="com.ding.aiplatjava.entity.Prompt">
+        SELECT id, user_id, title, content, category, created_at, updated_at
+        FROM prompts
+        WHERE id = #{id}
+    </select>
+
+    <!-- 根据用户ID查询Prompts -->
+    <select id="selectByUserId" resultType="com.ding.aiplatjava.entity.Prompt">
+        SELECT id, user_id, title, content, category, created_at, updated_at
+        FROM prompts
+        WHERE user_id = #{userId}
+        ORDER BY updated_at DESC
+    </select>
+
+    <!-- 插入Prompt -->
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO prompts (user_id, title, content, category, created_at, updated_at)
+        VALUES (#{userId}, #{title}, #{content}, #{category}, #{createdAt}, #{updatedAt})
+    </insert>
+
+    <!-- 根据ID更新Prompt -->
+    <update id="updateById">
+        UPDATE prompts
+        SET title = #{title},
+            content = #{content},
+            category = #{category},
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+          AND user_id = #{userId} <!-- Optional: Add user_id check for security -->
+    </update>
+
+    <!-- 根据ID删除Prompt -->
+    <delete id="deleteById">
+        DELETE FROM prompts
+        WHERE id = #{id}
+          AND user_id = #{userId} <!-- Optional: Add user_id check for security -->
+    </delete>
+
+</mapper> 

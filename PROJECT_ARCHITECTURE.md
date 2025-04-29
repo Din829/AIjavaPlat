@@ -14,7 +14,7 @@ Web SaaS (Software as a Service)
   - 语言: Java 21
   - 框架: Spring Boot 3.4.5
   - 数据库: MySQL 8.0
-  - ORM: MyBatis-Plus 3.5.7
+  - ORM: MyBatis 3.0.3
   - 安全: Spring Security, JWT
   - AI集成: Spring AI (OpenAI)
   - 构建工具: Maven
@@ -71,7 +71,9 @@ AIplatJava/
 - `service.UserService`: 用户服务接口
 - `service.impl.UserServiceImpl`: 用户服务实现
 - `controller.UserController`: 用户相关API
-- `security.*`: Spring Security配置和JWT实现
+- `dto.UserDto`: 用户数据传输对象
+- `dto.UserRegistrationDto`: 用户注册数据传输对象
+- `security.*`: Spring Security配置和JWT实现 `(计划中)`
 
 ### 2. API Token 安全管理 (Secure API Token Management)
 
@@ -83,10 +85,10 @@ AIplatJava/
 **主要组件**:
 - `entity.ApiToken`: API Token实体类
 - `mapper.ApiTokenMapper`: Token数据访问接口
-- `service.ApiTokenService`: Token服务接口
-- `service.impl.ApiTokenServiceImpl`: Token服务实现
-- `controller.ApiTokenController`: Token相关API
-- `util.EncryptionUtil`: 加密工具类
+- `service.ApiTokenService`: Token服务接口 `(计划中)`
+- `service.impl.ApiTokenServiceImpl`: Token服务实现 `(计划中)`
+- `controller.ApiTokenController`: Token相关API `(计划中)`
+- `util.EncryptionUtil`: 加密工具类 `(计划中)`
 
 ### 3. Prompt 管理 (Prompt Management)
 
@@ -97,9 +99,9 @@ AIplatJava/
 **主要组件**:
 - `entity.Prompt`: Prompt实体类
 - `mapper.PromptMapper`: Prompt数据访问接口
-- `service.PromptService`: Prompt服务接口
-- `service.impl.PromptServiceImpl`: Prompt服务实现
-- `controller.PromptController`: Prompt相关API
+- `service.PromptService`: Prompt服务接口 `(计划中)`
+- `service.impl.PromptServiceImpl`: Prompt服务实现 `(计划中)`
+- `controller.PromptController`: Prompt相关API `(计划中)`
 
 ### 4. 网页内容摘要 (Web Article Summarization)
 
@@ -109,13 +111,13 @@ AIplatJava/
 - 返回处理结果
 
 **主要组件**:
-- `service.WebContentService`: 网页内容服务接口
-- `service.impl.WebContentServiceImpl`: 网页内容服务实现
-- `service.AiService`: AI服务接口
-- `service.impl.AiServiceImpl`: AI服务实现
-- `controller.SummarizationController`: 摘要相关API
-- `dto.SummarizationRequest`: 摘要请求DTO
-- `dto.SummarizationResponse`: 摘要响应DTO
+- `service.WebContentService`: 网页内容服务接口 `(计划中)`
+- `service.impl.WebContentServiceImpl`: 网页内容服务实现 `(计划中)`
+- `service.AiService`: AI服务接口 `(计划中)`
+- `service.impl.AiServiceImpl`: AI服务实现 `(计划中)`
+- `controller.SummarizationController`: 摘要相关API `(计划中)`
+- `dto.SummarizationRequest`: 摘要请求DTO `(计划中)`
+- `dto.SummarizationResponse`: 摘要响应DTO `(计划中)`
 
 ## 数据库设计 (初步)
 

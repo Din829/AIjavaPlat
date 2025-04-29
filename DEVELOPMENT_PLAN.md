@@ -19,9 +19,10 @@
 - [x] 创建ApiToken实体类
 - [x] 创建Prompt实体类
 
-### 任务1.3: 配置MyBatis-Plus
-- [x] 创建Mapper接口
-- [x] 配置MyBatis-Plus全局设置
+### 任务1.3: 配置MyBatis
+- [x] 创建Mapper接口 (User)
+- [x] 创建Mapper接口 (ApiToken, Prompt)
+- [x] 配置MyBatis全局设置
 
 ## 阶段2: 用户认证与安全
 
@@ -54,9 +55,9 @@
 ## 阶段4: Prompt管理
 
 ### 任务4.1: Prompt服务实现
-- [ ] 创建PromptService接口
-- [ ] 实现PromptServiceImpl
-- [ ] 创建PromptController
+- [x] 创建PromptService接口
+- [x] 实现PromptServiceImpl
+- [x] 创建PromptController
 
 ## 阶段5: 网页内容摘要功能
 
