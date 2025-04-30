@@ -125,7 +125,7 @@ class PromptServiceImplTest {
         // When: 调用 service 方法
         List<Prompt> foundList = promptService.getPromptsByUserId(userId);
 
-        // Then: 验证返回的列表不为空，但大小为 0
+        // Then: 验证返回的列表不为空，但大小为 0 
         assertNotNull(foundList);
         assertTrue(foundList.isEmpty());
         verify(promptMapper, times(1)).selectByUserId(userId);

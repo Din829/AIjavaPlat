@@ -44,13 +44,13 @@
 ## 阶段3: API Token管理
 
 ### 任务3.1: 加密工具开发
-- [ ] 创建EncryptionUtil工具类
-- [ ] 实现AES加密/解密功能
+- [x] 创建EncryptionUtil工具类
+- [x] 实现AES加密/解密功能
 
 ### 任务3.2: Token服务实现
-- [ ] 创建ApiTokenService接口
-- [ ] 实现ApiTokenServiceImpl
-- [ ] 创建ApiTokenController
+- [x] 创建ApiTokenService接口
+- [x] 实现ApiTokenServiceImpl
+- [x] 创建ApiTokenController
 
 ## 阶段4: Prompt管理
 
@@ -78,7 +78,9 @@
 ## 阶段6: 测试
 
 ### 任务6.1: 单元测试
-- [ ] 编写Service层测试
+- [x] 编写Service层测试 (PromptService)
+- [x] 编写Service层测试 (ApiTokenService)
+- [x] 编写Util层测试 (EncryptionUtil)
 - [ ] 编写Controller层测试
 
 ### 任务6.2: 集成测试

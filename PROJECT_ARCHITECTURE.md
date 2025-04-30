@@ -35,25 +35,42 @@ AIplatJava/
 ├── src/
 │   ├── main/
 │   │   ├── java/
-│   │   │   └── com/ding/aiplatjava/
-│   │   │       ├── config/           # 配置类
-│   │   │       ├── controller/       # 控制器
-│   │   │       ├── dto/              # 数据传输对象
-│   │   │       ├── entity/           # 实体类
-│   │   │       ├── exception/        # 异常处理
-│   │   │       ├── mapper/           # MyBatis映射接口
-│   │   │       ├── security/         # 安全相关
-│   │   │       ├── service/          # 服务层
-│   │   │       │   └── impl/         # 服务实现
-│   │   │       ├── util/             # 工具类
-│   │   │       └── AIplatJavaApplication.java  # 主应用类
-│   │   └── resources/
-│   │       ├── static/               # 静态资源
-│   │       ├── templates/            # 模板
-│   │       ├── mapper/               # MyBatis XML映射文件
-│   │       └── application.properties # 应用配置
-│   └── test/                         # 测试代码
-└── docker-compose.yml                # Docker配置
+│   │   │   └── com/ding/aiplatjava/      # Java源代码根目录
+│   │   │       ├── config/           # Spring Boot 配置类 (如MyBatis, Security等)
+│   │   │       ├── controller/       # Spring MVC 控制器 (处理HTTP请求)
+│   │   │       ├── dto/              # 数据传输对象 (用于API请求/响应)
+│   │   │       ├── entity/           # 数据库实体类 (映射数据库表)
+│   │   │       ├── exception/        # 自定义异常类及全局异常处理器
+│   │   │       ├── mapper/           # MyBatis Mapper 接口
+│   │   │       ├── security/         # Spring Security 相关配置和实现 (计划中)
+│   │   │       ├── service/          # 业务逻辑服务层接口
+│   │   │       │   └── impl/         # 业务逻辑服务层实现
+│   │   │       ├── util/             # 通用工具类 (计划中)
+│   │   │       └── AIplatJavaApplication.java  # Spring Boot 主应用启动类
+│   │   └── resources/                # 资源文件目录
+│   │       ├── db/                   # 数据库脚本 (如 schema.sql)
+│   │       ├── mapper/               # MyBatis XML 映射文件
+│   │       │   ├── PromptMapper.xml
+│   │       │   └── ApiTokenMapper.xml
+│   │       ├── static/               # 静态资源 (如HTML, CSS, JS) (计划中)
+│   │       ├── templates/            # 服务端模板 (如Thymeleaf) (计划中)
+│   │       └── application.properties # Spring Boot 应用配置文件
+│   └── test/                         # 测试代码根目录
+│       └── java/
+│           └── com/ding/aiplatjava/      # 测试代码包结构
+│               ├── controller/       # 控制器测试 (待添加)
+│               ├── service/
+│               │   └── impl/         # 服务实现测试
+│               │       ├── PromptServiceImplTest.java
+│               │       └── ApiTokenServiceImplTest.java
+│               ├── util/             # 工具类测试
+│               │   └── EncryptionUtilTest.java
+│               └── AIplatJavaApplicationTests.java # Spring Boot 上下文加载测试
+├── pom.xml                           # Maven项目配置文件
+├── docker-compose.yml                # Docker Compose 配置文件
+├── PROJECT_ARCHITECTURE.md           # 项目架构文档 (本文档)
+├── DEVELOPMENT_PLAN.md               # 开发计划
+└── PROGRESS_SUMMARY.md               # 进度总结
 ```
 
 ## 核心功能模块
@@ -66,13 +83,33 @@ AIplatJava/
 - 权限控制
 
 **主要组件**:
-- `entity.User`: 用户实体类
+- `entity.User`: 用户实体类 (使用 Lombok)
 - `mapper.UserMapper`: 用户数据访问接口
+    - `User selectById(Long id)`: 根据ID查询用户
+    - `User selectByUsername(String username)`: 根据用户名查询用户
+    - `User selectByEmail(String email)`: 根据邮箱查询用户
+    - `List<User> selectList()`: 查询所有用户
+    - `int insert(User user)`: 插入用户
+    - `int updateById(User user)`: 根据ID更新用户
+    - `int deleteById(Long id)`: 根据ID删除用户
 - `service.UserService`: 用户服务接口
-- `service.impl.UserServiceImpl`: 用户服务实现
+    - `Optional<User> findById(Long id)`: 根据ID查询用户
+    - `Optional<User> findByUsername(String username)`: 根据用户名查询用户
+    - `Optional<User> findByEmail(String email)`: 根据电子邮件查询用户
+    - `List<User> findAll()`: 查询所有用户
+    - `User create(User user)`: 创建新用户
+    - `User update(User user)`: 更新用户信息
+    - `void delete(Long id)`: 删除用户
+- `service.impl.UserServiceImpl`: 用户服务实现 (实现 `UserService` 接口)
 - `controller.UserController`: 用户相关API
-- `dto.UserDto`: 用户数据传输对象
-- `dto.UserRegistrationDto`: 用户注册数据传输对象
+    - `ResponseEntity<List<UserDto>> getAllUsers()`: 获取所有用户
+    - `ResponseEntity<UserDto> getUserById(Long id)`: 根据ID获取用户
+    - `(private) UserDto convertToDto(User user)`: 将User实体转换为UserDto (内部方法)
+    - `(TODO) createUser(UserRegistrationDto registrationDto)`: 创建用户API (待实现)
+    - `(TODO) updateUser(Long id, UserDto userDto)`: 更新用户API (待实现)
+    - `(TODO) deleteUser(Long id)`: 删除用户API (待实现)
+- `dto.UserDto`: 用户数据传输对象 (使用 Lombok)
+- `dto.UserRegistrationDto`: 用户注册数据传输对象 (使用 Lombok)
 - `security.*`: Spring Security配置和JWT实现 `(计划中)`
 
 ### 2. API Token 安全管理 (Secure API Token Management)
@@ -83,12 +120,27 @@ AIplatJava/
 - 管理Token的生命周期
 
 **主要组件**:
-- `entity.ApiToken`: API Token实体类
+- `entity.ApiToken`: API Token实体类 (使用 Lombok)
 - `mapper.ApiTokenMapper`: Token数据访问接口
-- `service.ApiTokenService`: Token服务接口 `(计划中)`
-- `service.impl.ApiTokenServiceImpl`: Token服务实现 `(计划中)`
-- `controller.ApiTokenController`: Token相关API `(计划中)`
-- `util.EncryptionUtil`: 加密工具类 `(计划中)`
+    - `ApiToken selectById(Long id)`: 根据ID查询 ApiToken。
+    - `List<ApiToken> selectByUserId(Long userId)`: 根据用户ID查询该用户的所有 ApiTokens。
+    - `int insert(ApiToken apiToken)`: 插入新的 ApiToken。
+    - `int deleteByIdAndUserId(Long id, Long userId)`: 根据 Token ID 和用户 ID 删除 ApiToken。
+- `service.ApiTokenService`: Token服务接口
+    - `ApiToken createToken(ApiToken apiToken, Long userId)`: 创建新的 API Token (加密)。
+    - `List<ApiToken> getTokensByUserId(Long userId)`: 获取指定用户的所有 API Tokens (加密状态)。
+    - `String getDecryptedTokenValue(Long tokenId, Long userId)`: 根据 Token ID 获取解密后的 Token 值 (校验权限)。
+    - `boolean deleteToken(Long tokenId, Long userId)`: 删除指定 ID 的 API Token (校验权限)。
+- `service.impl.ApiTokenServiceImpl`: Token服务实现 (实现 `ApiTokenService` 接口)
+- `controller.ApiTokenController`: Token相关API
+    - `ResponseEntity<List<ApiTokenDto>> getCurrentUserTokens()`: 获取当前用户的所有 API Tokens (仅含安全信息)。
+    - `ResponseEntity<ApiTokenDto> createToken(ApiTokenDto tokenDto)`: 为当前用户创建新的 API Token。
+    - `ResponseEntity<Void> deleteToken(Long id)`: 删除指定 ID 的 API Token。
+    - `(private) ApiTokenDto convertToDto(ApiToken apiToken)`: 内部转换方法。
+- `dto.ApiTokenDto`: API Token 数据传输对象 (用于API交互, 不含Token值)。
+- `util.EncryptionUtil`: 加密工具类
+    - `String encrypt(String plainText)`: AES加密。
+    - `String decrypt(String encryptedText)`: AES解密。
 
 ### 3. Prompt 管理 (Prompt Management)
 
@@ -97,11 +149,26 @@ AIplatJava/
 - 管理用户的Prompt集合
 
 **主要组件**:
-- `entity.Prompt`: Prompt实体类
+- `entity.Prompt`: Prompt实体类 (使用 Lombok)
 - `mapper.PromptMapper`: Prompt数据访问接口
-- `service.PromptService`: Prompt服务接口 `(计划中)`
-- `service.impl.PromptServiceImpl`: Prompt服务实现 `(计划中)`
-- `controller.PromptController`: Prompt相关API `(计划中)`
+    - `Prompt selectById(Long id)`: 根据ID查询Prompt
+    - `List<Prompt> selectByUserId(Long userId)`: 根据用户ID查询该用户的所有Prompt
+    - `int insert(Prompt prompt)`: 插入新的Prompt
+    - `int updateById(Prompt prompt)`: 根据ID更新Prompt
+    - `int deleteById(Long id, Long userId)`: 根据ID删除Prompt (会校验用户ID)
+- `service.PromptService`: Prompt服务接口
+    - `Prompt getPromptById(Long id, Long userId)`: 根据ID获取Prompt (校验用户)
+    - `List<Prompt> getPromptsByUserId(Long userId)`: 获取指定用户的所有Prompt
+    - `Prompt createPrompt(Prompt prompt, Long userId)`: 创建新的Prompt
+    - `Prompt updatePrompt(Long id, Prompt prompt, Long userId)`: 更新现有的Prompt (校验用户)
+    - `boolean deletePrompt(Long id, Long userId)`: 删除Prompt (校验用户)
+- `service.impl.PromptServiceImpl`: Prompt服务实现 (实现 `PromptService` 接口)
+- `controller.PromptController`: Prompt相关API
+    - `ResponseEntity<List<Prompt>> getCurrentUserPrompts()`: 获取当前用户的所有Prompts
+    - `ResponseEntity<Prompt> getPromptById(Long id)`: 根据ID获取单个Prompt
+    - `ResponseEntity<Prompt> createPrompt(Prompt prompt)`: 创建新的Prompt
+    - `ResponseEntity<Prompt> updatePrompt(Long id, Prompt promptDetails)`: 更新现有的Prompt
+    - `ResponseEntity<Void> deletePrompt(Long id)`: 删除Prompt
 
 ### 4. 网页内容摘要 (Web Article Summarization)
 
