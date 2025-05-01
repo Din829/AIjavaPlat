@@ -142,6 +142,7 @@ class ApiTokenServiceImplTest {
     void getDecryptedTokenValue_TokenNotFound() {
         // Arrange: 模拟 Mapper 返回 null
         when(apiTokenMapper.selectById(tokenId1)).thenReturn(null);// 模拟 Mapper 的 selectById 方法返回 null
+        //因为没有找到 token，所以解密工具的 decrypt 方法不会被调用
 
         // Act: 调用 service 方法
         String decryptedValue = apiTokenService.getDecryptedTokenValue(tokenId1, userId);// 调用 service 方法，获取解密后的 tokenValue
@@ -156,31 +157,31 @@ class ApiTokenServiceImplTest {
     @Test
     void getDecryptedTokenValue_WrongUser() {
         // Arrange: 模拟 Mapper 返回 token1 (属于 userId=1)
-        when(apiTokenMapper.selectById(tokenId1)).thenReturn(token1);
-        Long wrongUserId = 2L;
+        when(apiTokenMapper.selectById(tokenId1)).thenReturn(token1);// 模拟 Mapper 的 selectById 方法返回 token1
+        Long wrongUserId = 2L;// 使用错误的用户 ID
 
         // Act: 使用错误的用户 ID 调用 service 方法
-        String decryptedValue = apiTokenService.getDecryptedTokenValue(tokenId1, wrongUserId);
+        String decryptedValue = apiTokenService.getDecryptedTokenValue(tokenId1, wrongUserId);// 调用 service 方法，获取解密后的 tokenValue
 
         // Assert: 验证返回 null，且解密方法未被调用
-        assertNull(decryptedValue);
-        verify(apiTokenMapper, times(1)).selectById(tokenId1);
-        verify(encryptionUtil, never()).decrypt(anyString());
+        assertNull(decryptedValue);// 验证返回 null
+        verify(apiTokenMapper, times(1)).selectById(tokenId1);// 验证 Mapper 的 selectById 方法被调用了一次
+        verify(encryptionUtil, never()).decrypt(anyString());// 验证解密工具的 decrypt 方法未被调用
     }
 
     @Test
     void getDecryptedTokenValue_DecryptionError() {
         // Arrange: 模拟 Mapper 返回 token1，模拟解密工具抛出异常
         when(apiTokenMapper.selectById(tokenId1)).thenReturn(token1);
-        when(encryptionUtil.decrypt(encryptedTokenValue)).thenThrow(new RuntimeException("Decryption failed"));
+        when(encryptionUtil.decrypt(encryptedTokenValue)).thenThrow(new RuntimeException("Decryption failed"));// 模拟解密工具的 decrypt 方法抛出异常
 
         // Act: 调用 service 方法
-        String decryptedValue = apiTokenService.getDecryptedTokenValue(tokenId1, userId);
+        String decryptedValue = apiTokenService.getDecryptedTokenValue(tokenId1, userId);// 调用 service 方法，获取解密后的 tokenValue
 
         // Assert: 验证返回 null (因为 Service 内部捕获了异常)
-        assertNull(decryptedValue);
-        verify(apiTokenMapper, times(1)).selectById(tokenId1);
-        verify(encryptionUtil, times(1)).decrypt(encryptedTokenValue);
+        assertNull(decryptedValue);// 验证返回 null
+        verify(apiTokenMapper, times(1)).selectById(tokenId1);// 验证 Mapper 的 selectById 方法被调用了一次
+        verify(encryptionUtil, times(1)).decrypt(encryptedTokenValue);// 验证解密工具的 decrypt 方法被调用了一次
     }
 
     // --- 测试 deleteToken --- 
@@ -188,26 +189,26 @@ class ApiTokenServiceImplTest {
     @Test
     void deleteToken_Success() {
         // Arrange: 模拟 Mapper 的 deleteByIdAndUserId 返回 1 (表示删除成功)
-        when(apiTokenMapper.deleteByIdAndUserId(tokenId1, userId)).thenReturn(1);
+        when(apiTokenMapper.deleteByIdAndUserId(tokenId1, userId)).thenReturn(1);// 模拟 Mapper 的 deleteByIdAndUserId 方法返回 1
 
         // Act: 调用 service 方法
-        boolean deleted = apiTokenService.deleteToken(tokenId1, userId);
+        boolean deleted = apiTokenService.deleteToken(tokenId1, userId);// 调用 service 方法，删除 token
 
         // Assert: 验证返回 true，且 Mapper 方法被正确调用
-        assertTrue(deleted);
-        verify(apiTokenMapper, times(1)).deleteByIdAndUserId(tokenId1, userId);
+        assertTrue(deleted);// 验证返回 true
+        verify(apiTokenMapper, times(1)).deleteByIdAndUserId(tokenId1, userId);// 验证 Mapper 的 deleteByIdAndUserId 方法被调用了一次
     }
 
     @Test
     void deleteToken_Failure() {
         // Arrange: 模拟 Mapper 的 deleteByIdAndUserId 返回 0 (表示未找到或未删除)
-        when(apiTokenMapper.deleteByIdAndUserId(tokenId1, userId)).thenReturn(0);
+        when(apiTokenMapper.deleteByIdAndUserId(tokenId1, userId)).thenReturn(0);// 模拟 Mapper 的 deleteByIdAndUserId 方法返回 0
 
         // Act: 调用 service 方法
-        boolean deleted = apiTokenService.deleteToken(tokenId1, userId);
+        boolean deleted = apiTokenService.deleteToken(tokenId1, userId);// 调用 service 方法，删除 token
 
         // Assert: 验证返回 false
-        assertFalse(deleted);
-        verify(apiTokenMapper, times(1)).deleteByIdAndUserId(tokenId1, userId);
+        assertFalse(deleted);// 验证返回 false
+        verify(apiTokenMapper, times(1)).deleteByIdAndUserId(tokenId1, userId);// 验证 Mapper 的 deleteByIdAndUserId 方法被调用了一次
     }
 } 

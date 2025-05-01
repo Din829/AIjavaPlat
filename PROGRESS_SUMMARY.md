@@ -27,31 +27,35 @@
 - 创建了`PromptController` (提供Prompt的CRUD API，用户ID暂硬编码)
 - 编写了`PromptServiceImpl`的单元测试 (`PromptServiceImplTest.java`)
 
-### 5. API Token 管理模块基础 (完成)
+### 5. API Token 管理模块基础 (已完成)
 - 创建了加密工具类 `EncryptionUtil` (含AES实现及单元测试)
 - 创建了 `ApiTokenService` 接口和 `ApiTokenServiceImpl` 实现类
 - 创建了 `ApiTokenController` (提供Token的创建、列表、删除API，用户ID暂硬编码)
 - 创建了 `ApiTokenDto` 用于API交互
 - 创建了 `ApiTokenMapper` 接口和 `ApiTokenMapper.xml` 映射文件
-- 编写了 `ApiTokenServiceImpl` 的单元测试
+- 编写了 `ApiTokenServiceImpl` 的单元测试 (`ApiTokenServiceImplTest.java`)
+
+### 6. 用户认证与安全 (已完成)
+- 配置了完整的 Spring Security (`SecurityConfig.java`), 包括密码编码器, `UserDetailsService` 实现 (`UserDetailsServiceImpl`), `AuthenticationProvider`, `AuthenticationManager`。
+- 实现了 JWT 工具类 (`JwtUtil.java`) 及单元测试。
+- 实现了 JWT 认证过滤器 (`JwtAuthFilter.java`) 及单元测试，并集成到安全配置中。
+- 创建了认证控制器 (`AuthController.java`) 用于处理登录 (`/api/auth/login`) 和注册 (`/api/auth/register`) 请求。
+- 创建了相关的 DTO (`LoginRequestDto`, `RegisterRequestDto`, `AuthResponseDto`)。
+- 在 `UserServiceImpl` 中实现了用户注册逻辑，包括密码加密。
+- 更新了 `PromptController` 和 `ApiTokenController` 以从安全上下文获取当前用户。
+- 编写了 `UserDetailsServiceImpl` 的单元测试。
 
 ## 下一步计划 (优先级调整)
 
-### 1. 用户认证与安全 (重要 - 下一步)
-- 配置Spring Security (`security.*`)
-- 实现密码加密 (`PasswordEncoder`)
-- 实现JWT认证与授权 (工具类, 过滤器, 配置)
-- 集成安全上下文到Controller (替换硬编码用户ID)
-
-### 2. 网页内容摘要功能 (后续核心)
+### 1. 网页内容摘要功能 (核心 - 下一步)
 - 实现网页内容获取和解析 (`service/WebContentService`)
 - 集成Spring AI (`service/AiService`, OpenAI实现)
 - 实现摘要控制器 (`SummarizationController`, DTOs)
 
-### 3. 完善与测试
+### 2. 完善与测试
 - 为`UserMapper`添加XML映射 (如果需要复杂查询)
-- 编写 Controller 层单元测试
-- 编写集成测试
+- 编写 Controller 层单元测试 (AuthController, PromptController, ApiTokenController)
+- 编写集成测试 (测试登录、注册、受保护 API 访问流程)
 - 完善异常处理和日志记录
 
 ## 注意事项 (保持)

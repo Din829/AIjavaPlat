@@ -42,10 +42,10 @@ AIplatJava/
 │   │   │       ├── entity/           # 数据库实体类 (映射数据库表)
 │   │   │       ├── exception/        # 自定义异常类及全局异常处理器
 │   │   │       ├── mapper/           # MyBatis Mapper 接口
-│   │   │       ├── security/         # Spring Security 相关配置和实现 (计划中)
+│   │   │       ├── security/         # Spring Security 相关实现 (JWT过滤器等)
 │   │   │       ├── service/          # 业务逻辑服务层接口
-│   │   │       │   └── impl/         # 业务逻辑服务层实现
-│   │   │       ├── util/             # 通用工具类 (计划中)
+│   │   │       │   └── impl/         # 业务逻辑服务层实现 (含UserDetailsService)
+│   │   │       ├── util/             # 通用工具类 (含JwtUtil)
 │   │   │       └── AIplatJavaApplication.java  # Spring Boot 主应用启动类
 │   │   └── resources/                # 资源文件目录
 │   │       ├── db/                   # 数据库脚本 (如 schema.sql)
@@ -59,12 +59,16 @@ AIplatJava/
 │       └── java/
 │           └── com/ding/aiplatjava/      # 测试代码包结构
 │               ├── controller/       # 控制器测试 (待添加)
+│               ├── security/         # Security组件测试
+│               │   └── JwtAuthFilterTest.java
 │               ├── service/
 │               │   └── impl/         # 服务实现测试
 │               │       ├── PromptServiceImplTest.java
-│               │       └── ApiTokenServiceImplTest.java
+│               │       ├── ApiTokenServiceImplTest.java
+│               │       └── UserDetailsServiceImplTest.java
 │               ├── util/             # 工具类测试
-│               │   └── EncryptionUtilTest.java
+│               │   ├── EncryptionUtilTest.java
+│               │   └── JwtUtilTest.java
 │               └── AIplatJavaApplicationTests.java # Spring Boot 上下文加载测试
 ├── pom.xml                           # Maven项目配置文件
 ├── docker-compose.yml                # Docker Compose 配置文件
@@ -80,37 +84,24 @@ AIplatJava/
 **职责**:
 - 用户注册、登录、登出
 - 用户信息管理
-- 权限控制
+- 权限控制 (通过JWT)
 
 **主要组件**:
-- `entity.User`: 用户实体类 (使用 Lombok)
+- `entity.User`: 用户实体类
 - `mapper.UserMapper`: 用户数据访问接口
-    - `User selectById(Long id)`: 根据ID查询用户
-    - `User selectByUsername(String username)`: 根据用户名查询用户
-    - `User selectByEmail(String email)`: 根据邮箱查询用户
-    - `List<User> selectList()`: 查询所有用户
-    - `int insert(User user)`: 插入用户
-    - `int updateById(User user)`: 根据ID更新用户
-    - `int deleteById(Long id)`: 根据ID删除用户
-- `service.UserService`: 用户服务接口
-    - `Optional<User> findById(Long id)`: 根据ID查询用户
-    - `Optional<User> findByUsername(String username)`: 根据用户名查询用户
-    - `Optional<User> findByEmail(String email)`: 根据电子邮件查询用户
-    - `List<User> findAll()`: 查询所有用户
-    - `User create(User user)`: 创建新用户
-    - `User update(User user)`: 更新用户信息
-    - `void delete(Long id)`: 删除用户
-- `service.impl.UserServiceImpl`: 用户服务实现 (实现 `UserService` 接口)
-- `controller.UserController`: 用户相关API
-    - `ResponseEntity<List<UserDto>> getAllUsers()`: 获取所有用户
-    - `ResponseEntity<UserDto> getUserById(Long id)`: 根据ID获取用户
-    - `(private) UserDto convertToDto(User user)`: 将User实体转换为UserDto (内部方法)
-    - `(TODO) createUser(UserRegistrationDto registrationDto)`: 创建用户API (待实现)
-    - `(TODO) updateUser(Long id, UserDto userDto)`: 更新用户API (待实现)
-    - `(TODO) deleteUser(Long id)`: 删除用户API (待实现)
-- `dto.UserDto`: 用户数据传输对象 (使用 Lombok)
-- `dto.UserRegistrationDto`: 用户注册数据传输对象 (使用 Lombok)
-- `security.*`: Spring Security配置和JWT实现 `(计划中)`
+- `service.UserService`: 用户服务接口 (含 `registerUser`)
+- `service.impl.UserServiceImpl`: 用户服务实现 (含密码加密)
+- `service.impl.UserDetailsServiceImpl`: Spring Security 用户详情服务实现
+- `controller.UserController`: 用户信息查询API (待移除或改造)
+- `controller.AuthController`: 认证API (登录`/api/auth/login`, 注册`/api/auth/register`)
+- `dto.UserDto`: 用户数据传输对象
+- `dto.UserRegistrationDto`: 用户注册数据传输对象
+- `dto.LoginRequestDto`: 登录请求DTO
+- `dto.RegisterRequestDto`: 注册请求DTO
+- `dto.AuthResponseDto`: 认证响应DTO (含JWT)
+- `config.SecurityConfig`: Spring Security核心配置
+- `security.JwtAuthFilter`: JWT认证过滤器
+- `util.JwtUtil`: JWT生成与验证工具类
 
 ### 2. API Token 安全管理 (Secure API Token Management)
 

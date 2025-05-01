@@ -1,9 +1,9 @@
 package com.ding.aiplatjava.service;
 
-import com.ding.aiplatjava.entity.User;
-
 import java.util.List;
 import java.util.Optional;
+
+import com.ding.aiplatjava.entity.User;
 
 /**
  * 用户服务接口
@@ -72,4 +72,12 @@ public interface UserService {
      * @param id 要删除的用户ID
      */
     void delete(Long id);
+
+    /**
+     * 注册新用户，并处理密码加密。
+     *
+     * @param user 包含用户名、邮箱和明文密码的用户对象。
+     * @return 注册并保存到数据库后的用户对象。
+     */
+    User registerUser(User user);
 }

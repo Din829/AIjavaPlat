@@ -27,19 +27,23 @@
 ## 阶段2: 用户认证与安全
 
 ### 任务2.1: Spring Security配置
-- [ ] 配置SecurityFilterChain
-- [ ] 实现密码加密
-- [ ] 配置认证管理器
+- [x] 配置SecurityFilterChain (基础)
+- [x] 实现密码加密
+- [x] 配置认证管理器
+- [x] 集成UserDetailsService和PasswordEncoder
 
 ### 任务2.2: JWT实现
-- [ ] 创建JWT工具类
-- [ ] 实现JWT过滤器
-- [ ] 配置JWT认证
+- [x] 创建JWT工具类
+- [x] 实现JWT过滤器
+- [x] 配置JWT认证 (集成过滤器到SecurityConfig)
 
 ### 任务2.3: 用户服务实现
 - [x] 创建UserService接口
-- [x] 实现UserServiceImpl
-- [x] 创建UserController
+- [x] 实现UserServiceImpl (包括注册和密码加密)
+- [x] 创建UserController (更新为使用安全上下文)
+- [x] 创建UserDetailsService实现 (UserDetailsServiceImpl)
+- [x] 创建AuthController (登录/注册端点)
+- [x] 创建认证相关DTO (LoginRequest, RegisterRequest, AuthResponse)
 
 ## 阶段3: API Token管理
 
@@ -81,7 +85,10 @@
 - [x] 编写Service层测试 (PromptService)
 - [x] 编写Service层测试 (ApiTokenService)
 - [x] 编写Util层测试 (EncryptionUtil)
-- [ ] 编写Controller层测试
+- [x] 编写Util层测试 (JwtUtil)
+- [x] 编写Service层测试 (UserDetailsServiceImpl)
+- [x] 编写Security组件测试 (JwtAuthFilter)
+- [ ] 编写Controller层测试 (AuthController, PromptController, ApiTokenController)
 
 ### 任务6.2: 集成测试
 - [ ] 编写API集成测试
