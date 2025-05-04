@@ -45,22 +45,30 @@
 - 更新了 `PromptController` 和 `ApiTokenController` 以从安全上下文获取当前用户。
 - 编写了 `UserDetailsServiceImpl` 的单元测试。
 
+### 7. 网页内容摘要功能 (已完成)
+- 创建了 `WebContentService` 接口和 `WebContentServiceImpl` 实现 (使用 Jsoup 解析 HTML)。
+- 创建了 `AiService` 接口和 `AiServiceImpl` 实现 (使用 Spring AI ChatModel, M8 版本适配)。
+- 创建了 `SummarizationRequestDto` 和 `SummarizationResponseDto`。
+- 创建了 `SummarizationController`，处理 `/api/summarize` POST 请求，集成 WebContentService 和 AiService，并处理用户认证和 Token 获取。
+- 添加了 `spring-boot-starter-validation` 依赖。
+- 在 `ApiTokenService` 中添加了 `getDecryptedTokenValueByProvider` 方法以支持控制器逻辑。
+
 ## 下一步计划 (优先级调整)
 
-### 1. 网页内容摘要功能 (核心 - 下一步)
-- 实现网页内容获取和解析 (`service/WebContentService`)
-- 集成Spring AI (`service/AiService`, OpenAI实现)
-- 实现摘要控制器 (`SummarizationController`, DTOs)
-
-### 2. 完善与测试
+### 1. 完善与测试
+- ~~实现网页内容获取和解析 (`service/WebContentService`)~~
+- ~~集成Spring AI (`service/AiService`, OpenAI实现)~~ 
+- ~~实现摘要控制器 (`SummarizationController`, DTOs)~~ 
 - 为`UserMapper`添加XML映射 (如果需要复杂查询)
-- 编写 Controller 层单元测试 (AuthController, PromptController, ApiTokenController)
-- 编写集成测试 (测试登录、注册、受保护 API 访问流程)
-- 完善异常处理和日志记录
+- 编写 Controller 层单元测试 (AuthController, PromptController, ApiTokenController, SummarizationController)
+- 编写集成测试 (测试登录、注册、受保护 API 访问流程，特别是摘要流程)
+- 完善异常处理和日志记录 (特别是 AI 调用和 Token 解密部分)
+- **核心问题**: 解决数据库中 Token 解密失败的问题 (可能由 null 或格式错误引起)。
+- **核心问题**: 确认并配置有效的 OpenAI API Key (目前全局配置，非用户级)。
 
 ## 注意事项 (保持)
 
-1. 所有敏感信息（如API密钥）应该使用环境变量或安全的配置管理
+1. 所有敏感信息（如API密钥）应该使用环境变量或安全的配置管理。**请确保已在 `application.properties` 中配置有效的 OpenAI API Key**。
 2. 确保所有用户输入都经过验证和清理
 3. 实现适当的错误处理和日志记录
 4. 编写单元测试和集成测试

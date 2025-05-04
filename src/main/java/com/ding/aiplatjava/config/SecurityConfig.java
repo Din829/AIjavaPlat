@@ -87,6 +87,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(authorize -> authorize
                 // 指定路径完全公开访问，不需要认证
                 .requestMatchers("/api/auth/**").permitAll() // 允许所有对 /api/auth/ 下路径的请求 (用于登录、注册等)
+                // .requestMatchers("/api/test/**").permitAll() // 移除测试接口的permitAll
                 // 其他所有未明确匹配的请求都需要认证
                 .anyRequest().authenticated()
             )
@@ -103,4 +104,4 @@ public class SecurityConfig {
         // 构建并返回过滤器链
         return http.build();
     }
-} 
+}

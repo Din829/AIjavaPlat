@@ -31,7 +31,7 @@ class UserDetailsServiceImplTest {
     @InjectMocks // 创建 UserDetailsServiceImpl 的实例并将模拟对象注入其中
     private UserDetailsServiceImpl userDetailsService;
 
-    private User testUser;
+    private User testUser;//测试用户
 
     @BeforeEach
     void setUp() {
@@ -42,12 +42,14 @@ class UserDetailsServiceImplTest {
         testUser.setPassword("encodedPassword"); // 假设密码已预先编码
     }
 
+    // --- 测试 loadUserByUsername --- 
+
     @Test
     void loadUserByUsername_shouldReturnUserDetails_whenUserExists() {
         // Arrange: 配置模拟 UserMapper 在调用 selectByUsername 时返回 testUser
         when(userMapper.selectByUsername("testuser")).thenReturn(testUser);
 
-        // Act: 调用被测试的方法
+        // Act: 调用被测试的方法，loadUserByUsername是指从数据库中加载用户信息后转换为UserDetails对象
         UserDetails userDetails = userDetailsService.loadUserByUsername("testuser");
 
         // Assert: 验证返回的 UserDetails 与 testUser 的数据匹配
@@ -55,14 +57,16 @@ class UserDetailsServiceImplTest {
         assertEquals("testuser", userDetails.getUsername());
         assertEquals("encodedPassword", userDetails.getPassword());
         assertTrue(userDetails.getAuthorities().isEmpty()); // 假设目前没有权限
-        assertTrue(userDetails.isAccountNonExpired());
-        assertTrue(userDetails.isAccountNonLocked());
-        assertTrue(userDetails.isCredentialsNonExpired());
-        assertTrue(userDetails.isEnabled());
+        assertTrue(userDetails.isAccountNonExpired());//账户未过期
+        assertTrue(userDetails.isAccountNonLocked());//账户未锁定
+        assertTrue(userDetails.isCredentialsNonExpired());//凭证未过期
+        assertTrue(userDetails.isEnabled());//账户已启用
 
         // 验证 userMapper.selectByUsername 使用 "testuser" 被精确调用了一次
         verify(userMapper).selectByUsername("testuser");
     }
+
+    // --- 测试 loadUserByUsername 当用户不存在时 --- 
 
     @Test
     void loadUserByUsername_shouldThrowUsernameNotFoundException_whenUserDoesNotExist() {

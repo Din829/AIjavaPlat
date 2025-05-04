@@ -50,4 +50,15 @@ public interface ApiTokenService {
      */
     boolean deleteToken(Long tokenId, Long userId);
 
+    /**
+     * 根据用户 ID 和提供商获取解密后的 Token 值。
+     *
+     * @param userId 用户 ID。
+     * @param provider 提供商名称 (例如 "openai")。
+     * @return 解密后的 API Token 字符串。
+     * @throws ResourceNotFoundException 如果未找到指定用户或提供商的 Token。
+     * @throws RuntimeException 如果解密失败。
+     */
+    String getDecryptedTokenValueByProvider(Long userId, String provider);
+
 } 

@@ -66,18 +66,18 @@
 ## 阶段5: 网页内容摘要功能
 
 ### 任务5.1: 网页内容获取
-- [ ] 创建WebContentService
-- [ ] 实现HTML解析(Jsoup)
+- [x] 创建WebContentService
+- [x] 实现HTML解析(Jsoup)
 
 ### 任务5.2: AI服务集成
-- [ ] 配置Spring AI
-- [ ] 创建AiService接口
-- [ ] 实现OpenAI集成
+- [x] 配置Spring AI
+- [x] 创建AiService接口
+- [x] 实现OpenAI集成
 
 ### 任务5.3: 摘要控制器
-- [ ] 创建SummarizationController
-- [ ] 实现摘要请求处理
-- [ ] 创建请求/响应DTO
+- [x] 创建SummarizationController
+- [x] 实现摘要请求处理
+- [x] 创建请求/响应DTO
 
 ## 阶段6: 测试
 

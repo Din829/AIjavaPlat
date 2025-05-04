@@ -35,94 +35,102 @@ class JwtUtilTest {
     // 重要提示：此密钥仅用于测试。在生产环境中使用强壮且安全管理的密钥。
     private final String testSecretKeyString = "VGhpcyBpcyBhIHZlcnkgc2VjdXJlIGFuZCBsb25nIHNlY3JldCBmb3IgdGVzdGluZyBwdXJwb3NlcyE="; // Base64 编码的测试密钥
     private final long testJwtExpirationMs = 3600000; // 1 小时（毫秒）
-    private final SecretKey testSignInKey = Keys.hmacShaKeyFor(Decoders.BASE64.decode(testSecretKeyString));
+    private final SecretKey testSignInKey = Keys.hmacShaKeyFor(Decoders.BASE64.decode(testSecretKeyString));//生成签名密钥
 
-    private UserDetails testUserDetails;
+    private UserDetails testUserDetails;//测试用户详情
 
+    // 在每个测试之前设置JWT工具类
     @BeforeEach
     void setUp() {
-        jwtUtil = new JwtUtil();
+        jwtUtil = new JwtUtil();//创建JWT工具类
         // 使用 Spring 的 ReflectionTestUtils 设置带有 @Value 注解的私有字段
-        ReflectionTestUtils.setField(jwtUtil, "secretKeyString", testSecretKeyString);
-        ReflectionTestUtils.setField(jwtUtil, "jwtExpirationMs", testJwtExpirationMs);
+        ReflectionTestUtils.setField(jwtUtil, "secretKeyString", testSecretKeyString);//设置密钥
+        ReflectionTestUtils.setField(jwtUtil, "jwtExpirationMs", testJwtExpirationMs);//设置过期时间
 
-        testUserDetails = new User("testuser", "password", Collections.emptyList());
+        testUserDetails = new User("testuser", "password", Collections.emptyList());//创建测试用户详情
     }
 
+    // 测试生成令牌
     @Test
     void generateToken_shouldGenerateValidToken() {
-        String token = jwtUtil.generateToken(testUserDetails);
-        assertNotNull(token);
+        String token = jwtUtil.generateToken(testUserDetails);//生成令牌
+        assertNotNull(token);//验证令牌不为空
 
         // 验证可以使用相同的密钥解析令牌
         String extractedUsername = Jwts.parser()
-                                       .verifyWith(testSignInKey)
+                                       .verifyWith(testSignInKey)//使用相同的密钥解析令牌
                                        .build()
-                                       .parseSignedClaims(token)
+                                       .parseSignedClaims(token)//解析令牌
                                        .getPayload()
-                                       .getSubject();
+                                       .getSubject();//获取用户名
         assertEquals("testuser", extractedUsername);
     }
 
+    // 测试提取用户名
     @Test
     void extractUsername_shouldReturnCorrectUsername() {
-        String token = jwtUtil.generateToken(testUserDetails);
-        String username = jwtUtil.extractUsername(token);
-        assertEquals("testuser", username);
+        String token = jwtUtil.generateToken(testUserDetails);//生成令牌
+        String username = jwtUtil.extractUsername(token);//提取用户名
+        assertEquals("testuser", username);//验证用户名正确
     }
 
-     @Test
+    // 测试提取声明
+    @Test
     void extractClaim_shouldReturnCorrectClaim() {
         Map<String, Object> extraClaims = new HashMap<>();
         extraClaims.put("customClaim", "customValue");
-        String token = jwtUtil.generateToken(extraClaims, testUserDetails);
+        String token = jwtUtil.generateToken(extraClaims, testUserDetails);//生成令牌
 
-        String subject = jwtUtil.extractClaim(token, claims -> claims.getSubject());
-        String customClaimValue = jwtUtil.extractClaim(token, claims -> claims.get("customClaim", String.class));
-        Date expiration = jwtUtil.extractClaim(token, claims -> claims.getExpiration());
+        String subject = jwtUtil.extractClaim(token, claims -> claims.getSubject());//提取用户名
+        String customClaimValue = jwtUtil.extractClaim(token, claims -> claims.get("customClaim", String.class));//提取自定义声明
+        Date expiration = jwtUtil.extractClaim(token, claims -> claims.getExpiration());//提取过期时间
 
 
-        assertEquals("testuser", subject);
-        assertEquals("customValue", customClaimValue);
-        assertNotNull(expiration);
-        assertTrue(expiration.after(new Date()));
+        assertEquals("testuser", subject);//验证用户名正确
+        assertEquals("customValue", customClaimValue);//验证自定义声明正确
+        assertNotNull(expiration);//验证过期时间不为空
+        assertTrue(expiration.after(new Date()));//验证过期时间在当前时间之后
     }
 
+    // 测试验证令牌
     @Test
     void isTokenValid_shouldReturnTrueForValidToken() {
-        String token = jwtUtil.generateToken(testUserDetails);
-        assertTrue(jwtUtil.isTokenValid(token, testUserDetails));
+        String token = jwtUtil.generateToken(testUserDetails);//生成令牌
+        assertTrue(jwtUtil.isTokenValid(token, testUserDetails));//验证令牌有效
     }
 
+    // 测试验证令牌过期
     @Test
     void isTokenValid_shouldReturnFalseForExpiredToken() throws InterruptedException {
          // 生成一个具有非常短过期时间的令牌用于测试
         long shortExpiration = 100; // 100 毫秒
-        ReflectionTestUtils.setField(jwtUtil, "jwtExpirationMs", shortExpiration);
-        String token = jwtUtil.generateToken(testUserDetails);
+        ReflectionTestUtils.setField(jwtUtil, "jwtExpirationMs", shortExpiration);//设置过期时间
+        String token = jwtUtil.generateToken(testUserDetails);//生成令牌
 
         // 等待令牌过期
         Thread.sleep(shortExpiration + 50);
 
-        assertFalse(jwtUtil.isTokenValid(token, testUserDetails));
+        assertFalse(jwtUtil.isTokenValid(token, testUserDetails));//验证令牌过期
          // 验证从过期令牌提取声明时是否抛出 ExpiredJwtException
         assertThrows(ExpiredJwtException.class, () -> jwtUtil.extractUsername(token));
 
          // 为其他测试恢复原始过期时间
         ReflectionTestUtils.setField(jwtUtil, "jwtExpirationMs", testJwtExpirationMs);
     }
-
-     @Test
+    
+    // 测试验证用户名不匹配
+    @Test
     void isTokenValid_shouldReturnFalseForUsernameMismatch() {
-        String token = jwtUtil.generateToken(testUserDetails);
-        UserDetails differentUserDetails = new User("anotheruser", "password", Collections.emptyList());
-        assertFalse(jwtUtil.isTokenValid(token, differentUserDetails));
+        String token = jwtUtil.generateToken(testUserDetails);//生成令牌
+        UserDetails differentUserDetails = new User("anotheruser", "password", Collections.emptyList());//创建不同的用户详情
+        assertFalse(jwtUtil.isTokenValid(token, differentUserDetails));//验证令牌无效
     }
 
-     @Test
+    // 测试验证无效签名
+    @Test
     void isTokenValid_shouldReturnFalseForInvalidSignature() {
          // 使用正确的密钥生成令牌
-        String token = jwtUtil.generateToken(testUserDetails);
+        String token = jwtUtil.generateToken(testUserDetails);//生成令牌
 
          // 尝试使用不同的密钥进行验证
         SecretKey wrongKey = Keys.hmacShaKeyFor(Decoders.BASE64.decode("d3JvbmdLZXlTdHJpbmdGb3JUZXN0aW5nVGhhdElzTG9uZ0Vub3VnaCE=")); // 不同的 Base64 密钥

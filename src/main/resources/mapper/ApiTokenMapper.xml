@@ -40,4 +40,16 @@
           AND user_id = #{userId}
     </delete>
 
+    <!-- 根据用户ID和Provider查询单个ApiToken -->
+    <select id="selectByUserIdAndProvider" resultType="com.ding.aiplatjava.entity.ApiToken">
+        SELECT
+            id, user_id, provider, token_value, created_at, updated_at
+        FROM
+            api_tokens
+        WHERE
+            user_id = #{userId}
+          AND provider = #{provider}
+        LIMIT 1 -- 假设一个用户一个提供商只有一个token，确保只返回一个
+    </select>
+
 </mapper> 

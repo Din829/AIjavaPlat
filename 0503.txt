@@ -1,0 +1,164 @@
+# 2025年5月3日 - 开发进度与测试总结
+
+## 主要完成内容
+
+1.  **项目状态理解**:
+    *   分析了 `PROJECT_ARCHITECTURE.md`, `PROGRESS_SUMMARY.md`, `DEVELOPMENT_PLAN.md`, `AUGMENT_RULES.md`，明确了项目当前状态、技术栈、已完成功能以及下一步目标（网页摘要）。
+
+2.  **Spring AI (1.0.0-M8) 集成准备**:
+    *   确认了 `pom.xml` 中 Spring AI 的版本和 OpenAI 依赖。
+    *   通过文档查找工具获取了 Spring AI M8 的部分信息，确认了 OpenAI 依赖设置，并了解到 M8 版本 API 可能与 GA 版本存在差异。
+
+3.  **网页内容提取功能实现**:
+    *   创建了 `WebContentService` 接口。
+    *   创建了 `WebContentServiceImpl` 实现，使用 Jsoup 库进行网页内容获取，并添加了基本的超时和错误处理。
+
+4.  **AI 摘要服务实现**:
+    *   创建了 `AiService` 接口。
+    *   创建了 `AiServiceImpl` 实现：
+        *   注入了 Spring AI 的核心组件 `ChatModel`。
+        *   构建了摘要提示。
+        *   **关键适配 (M8 版本)**: 针对 M8 版本 `ChatResponse` 的特点，调整了结果提取逻辑，优先尝试 `toString()` 方法获取 `AssistantMessage` 内容。
+        *   **API Key 处理**: 暂时移除了动态传递用户 API Key 的尝试（因 M8 版本可能不支持），改为依赖 `application.properties` 中的全局 `spring.ai.openai.api-key` 配置。在配置文件中添加了该项的占位符。
+
+5.  **API Token 服务增强**:
+    *   在 `ApiTokenMapper` (接口和 XML) 中添加了 `selectByUserIdAndProvider` 查询。
+    *   在 `ApiTokenService` 接口和 `ApiTokenServiceImpl` 实现中添加了 `getDecryptedTokenValueByProvider` 方法，以便后续控制器能根据用户 ID 和提供商查找解密后的 Token。修复了实现中调用 `EncryptionUtil.decrypt` 的静态/非静态问题。
+
+6.  **摘要 API 端点实现**:
+    *   添加了 `spring-boot-starter-validation` 依赖到 `pom.xml`。
+    *   创建了 `SummarizationRequestDto` (包含 URL 字段和校验注解) 和 `SummarizationResponseDto` (包含 summary 字段)。
+    *   创建了 `SummarizationController`，实现了 `POST /api/summarize` 端点：
+        *   注入所需服务。
+        *   获取当前认证用户。
+        *   调用 `ApiTokenService` 获取用户 Token (虽然 AI Service 暂不使用)。
+        *   调用 `WebContentService` 提取文本。
+        *   调用 `AiService` 进行摘要。
+        *   处理各种潜在异常并返回合适的 HTTP 状态。
+
+## 问题排查与 Apifox 测试
+
+1.  **Linter 错误**:
+    *   多次遇到 Linter (IDE/编辑器静态检查) 报错，提示找不到 Lombok 生成的方法 (getter/setter/构造函数) 或 Validation 注解/包。
+    *   通过 `mvn compile` 或应用成功启动确认这些是 Linter 与 Maven 项目同步或 Lombok/Validation 插件集成的问题，**并非实际编译错误**。建议后续通过重新加载 Maven 项目或清理 IDE 缓存解决。
+
+2.  **Apifox API 测试**:
+    *   **注册 (`POST /api/auth/register`)**:
+        *   遇到 "Error: Passwords don't match!" (400 Bad Request)。
+        *   **解决**: 指导在请求体中添加 `confirmPassword` 字段并确保其值与 `password` 一致。
+    *   **登录 (`POST /api/auth/login`)**:
+        *   遇到 "Bad credentials" (401 Unauthorized) 和日志中 "Encoded password does not look like BCrypt" 警告。
+        *   **原因**: 数据库中用户密码未用 BCrypt 加密。
+        *   **解决**: 建议通过 `/api/auth/register` 接口重新注册用户以确保存储正确的密码哈希。用户成功注册 "ding2" 并登录获取 JWT Token。
+    *   **添加 Token (`POST /api/tokens`)**:
+        *   遇到 `403 Forbidden`。
+        *   **分析**: 确认 `Authorization: Bearer <token>` Header 格式正确。推测原因为 Token 过期或 CSRF 保护未禁用。建议重新获取 Token 或检查 `SecurityConfig`。
+        *   后续调用时遇到 MyBatis `BindingException: Invalid bound statement (not found): com.ding.aiplatjava.mapper.ApiTokenMapper.insert`。
+        *   **分析**: 检查了 `ApiTokenMapper.java` 和 `.xml` 文件，确认 namespace 和 id 匹配。推测为构建/缓存问题。
+        *   **建议**: 执行 `mvn clean install` 清理并重新构建项目。
+
+# 2025年5月4日 - 问题排查与解决方案
+
+## 遇到的错误与问题
+
+1. **Token解密失败问题**:
+   * 错误信息: `java.lang.NullPointerException: Cannot invoke "String.getBytes(java.nio.charset.Charset)" because "src" is null`
+   * 错误位置: `com.ding.aiplatjava.util.EncryptionUtil.decrypt(EncryptionUtil.java:95)`
+   * 根本原因: 数据库中存储的API令牌值可能为null或格式不正确，导致Base64解码失败
+   * 影响: 无法解密用户的API令牌，导致摘要功能无法使用
+
+2. **端口占用问题**:
+   * 错误信息: `Web server failed to start. Port 8080 was already in use.`
+   * 根本原因: 之前的Spring Boot应用程序实例仍在运行，占用了8080端口
+   * 解决方法: 使用`netstat -ano | findstr :8080`找到占用端口的进程，然后使用`powershell -Command "Stop-Process -Id <PID> -Force"`终止该进程
+
+3. **OpenAI API认证问题**:
+   * 错误信息: `Error while extracting response for type [org.springframework.ai.openai.api.OpenAiApi$ChatCompletion] and content type [application/json;charset=utf-8]`
+   * 根本原因: `cannot retry due to server authentication, in streaming mode`，表明OpenAI API拒绝了认证请求
+   * 可能原因: API密钥格式不正确（使用了项目级别的API密钥`sk-proj-`而不是标准的`sk-`格式）或API密钥无效
+
+4. **Spring Security认证问题**:
+   * 错误信息: `403 Forbidden`
+   * 根本原因: Spring Security配置默认要求所有API端点都需要认证，包括测试端点
+   * 解决方法: 修改`SecurityConfig`，允许对`/api/test/**`端点的访问而不需要认证
+
+## 创建的测试文件
+
+1. **TestSummarizationController.java**:
+   * 路径: `src/main/java/com/ding/aiplatjava/controller/TestSummarizationController.java`
+   * 功能: 提供一个不需要用户认证的测试端点`/api/test/summarize`，用于测试网页摘要功能
+   * 特点: 不依赖于用户的API令牌，直接使用全局配置的API密钥
+
+2. **SimpleTestController.java**:
+   * 路径: `src/main/java/com/ding/aiplatjava/controller/SimpleTestController.java`
+   * 功能: 提供一个简单的测试端点`/api/test/simple`，返回一个固定的文本响应
+   * 特点: 不依赖于任何外部服务或数据库，用于验证API访问是否正常
+
+## 修改的配置文件
+
+1. **application.properties**:
+   * 修改了OpenAI API配置:
+     ```properties
+     spring.ai.openai.api-key=sk-test-key-replace-with-real-key
+     spring.ai.openai.model=gpt-3.5-turbo
+     spring.ai.openai.base-url=https://api.openai.com
+     spring.ai.openai.chat.options.temperature=0.7
+     spring.ai.openai.chat.options.max-tokens=500
+     ```
+
+2. **SecurityConfig.java**:
+   * 修改了安全配置，允许对`/api/test/**`端点的访问而不需要认证:
+     ```java
+     .authorizeHttpRequests(authorize -> authorize
+         .requestMatchers("/api/auth/**").permitAll()
+         .requestMatchers("/api/test/**").permitAll() // 允许所有对 /api/test/ 下路径的请求
+         .anyRequest().authenticated()
+     )
+     ```
+
+## 修改的服务实现
+
+1. **AiServiceImpl.java**:
+   * 修改了`summarizeText`方法，使其忽略用户的API密钥，直接使用全局配置的API密钥:
+     ```java
+     @Override
+     public String summarizeText(String textToSummarize, String userApiKey) {
+         // 注意：暂时忽略用户API密钥，使用全局配置的API密钥
+         log.info("Summarizing text using global API key configuration (ignoring user API key)");
+         // ...
+     }
+     ```
+
+## 测试结果
+
+1. **简单测试端点**:
+   * 请求: `GET http://localhost:8080/api/test/simple`
+   * 响应: `API测试成功！这是一个简单的测试响应，不依赖于任何外部服务。`
+   * 结果: 成功，证明基本的API架构是正常工作的
+
+2. **摘要测试端点**:
+   * 请求: `POST http://localhost:8080/api/test/summarize`
+   * 请求体: `{ "url": "https://en.wikipedia.org/wiki/Artificial_intelligence" }`
+   * 响应: `500 INTERNAL_SERVER_ERROR "AI服务调用失败: 文本摘要生成失败: Error while extracting response for type [org.springframework.ai.openai.api.OpenAiApi$ChatCompletion] and content type [application/json;charset=utf-8]"`
+   * 结果: 失败，OpenAI API认证问题仍未解决
+
+## 下一步建议
+
+1. **修复API令牌解密问题**:
+   * 清理数据库中的无效令牌
+   * 改进`EncryptionUtil`类，添加更多的错误处理
+   * 考虑重新设计API令牌的存储和加密/解密机制
+
+2. **解决OpenAI API认证问题**:
+   * 获取有效的OpenAI API密钥（标准格式，以"sk-"开头）
+   * 将其替换到`application.properties`文件中
+   * 或者考虑使用其他AI服务提供商
+
+3. **改进错误处理**:
+   * 添加更详细的日志记录
+   * 实现更友好的错误消息
+   * 考虑添加重试机制
+
+4. **考虑替代方案**:
+   * 如果无法解决OpenAI API认证问题，可以考虑使用本地的NLP库（如Apache OpenNLP或Stanford NLP）
+   * 或者实现一个简单的基于规则的摘要算法

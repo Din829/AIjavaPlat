@@ -1,18 +1,20 @@
 package com.ding.aiplatjava.util;
 
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.io.Decoders;
-import io.jsonwebtoken.security.Keys;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.stereotype.Component;
-
-import javax.crypto.SecretKey;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Function;
+
+import javax.crypto.SecretKey;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.stereotype.Component;
+
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.io.Decoders;
+import io.jsonwebtoken.security.Keys;
 
 /**
  * JWT (JSON Web Token) 工具类。
@@ -100,10 +102,16 @@ public class JwtUtil {
      * @return 如果 Token 有效则返回 true，否则返回 false。
      */
     public boolean isTokenValid(String token, UserDetails userDetails) {
-        // 1. 从 Token 中提取用户名
-        final String username = extractUsername(token);
-        // 2. 检查提取的用户名是否与 UserDetails 中的用户名匹配，并且 Token 未过期
-        return (username.equals(userDetails.getUsername())) && !isTokenExpired(token);
+        try {
+            // 1. 从 Token 中提取用户名
+            final String username = extractUsername(token);
+            // 2. 检查提取的用户名是否与 UserDetails 中的用户名匹配，并且 Token 未过期
+            return (username.equals(userDetails.getUsername())) && !isTokenExpired(token);
+        } catch (io.jsonwebtoken.JwtException e) {
+            // 如果在提取用户名或检查过期时发生任何JWT异常 (如过期、签名错误等)，则令牌无效
+            // 可以添加日志记录 e.getMessage() 以便调试
+            return false;
+        }
     }
 
     /**
@@ -113,8 +121,13 @@ public class JwtUtil {
      * @return 如果 Token 已过期则返回 true，否则返回 false。
      */
     private boolean isTokenExpired(String token) {
-        // 提取过期时间 Claim，并与当前时间比较
-        return extractExpiration(token).before(new Date());
+        try {
+            // 尝试提取过期时间 Claim，并与当前时间比较
+            return extractExpiration(token).before(new Date());
+        } catch (io.jsonwebtoken.ExpiredJwtException e) {
+            // 如果在提取过期时间时就因为过期而抛出异常，那么令牌就是过期的
+            return true;
+        }
     }
 
     /**

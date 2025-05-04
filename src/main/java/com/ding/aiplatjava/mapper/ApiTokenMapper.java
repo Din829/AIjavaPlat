@@ -46,4 +46,13 @@ public interface ApiTokenMapper {
      */
     int deleteByIdAndUserId(@Param("id") Long id, @Param("userId") Long userId);
 
+    /**
+     * 根据用户 ID 和提供商查询单个 ApiToken。
+     * 假设一个用户对于一个提供商只有一个 Token，如果不是，此方法只返回第一个找到的。
+     * @param userId 用户 ID。
+     * @param provider 提供商名称 (例如 "openai")。
+     * @return 找到的 ApiToken，如果不存在则返回 null。
+     */
+    ApiToken selectByUserIdAndProvider(@Param("userId") Long userId, @Param("provider") String provider);
+
 } 

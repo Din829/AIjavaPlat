@@ -18,6 +18,7 @@ Web SaaS (Software as a Service)
   - 安全: Spring Security, JWT
   - AI集成: Spring AI (OpenAI)
   - 构建工具: Maven
+  - 其他: Jsoup (HTML解析), Spring Validation (数据校验)
 
 - **前端** (计划中):
   - 语言: TypeScript
@@ -169,13 +170,13 @@ AIplatJava/
 - 返回处理结果
 
 **主要组件**:
-- `service.WebContentService`: 网页内容服务接口 `(计划中)`
-- `service.impl.WebContentServiceImpl`: 网页内容服务实现 `(计划中)`
-- `service.AiService`: AI服务接口 `(计划中)`
-- `service.impl.AiServiceImpl`: AI服务实现 `(计划中)`
-- `controller.SummarizationController`: 摘要相关API `(计划中)`
-- `dto.SummarizationRequest`: 摘要请求DTO `(计划中)`
-- `dto.SummarizationResponse`: 摘要响应DTO `(计划中)`
+- `service.WebContentService`: 网页内容服务接口
+- `service.impl.WebContentServiceImpl`: 网页内容服务实现 (使用 Jsoup)
+- `service.AiService`: AI服务接口
+- `service.impl.AiServiceImpl`: AI服务实现 (使用 Spring AI ChatModel)
+- `controller.SummarizationController`: 摘要相关API (处理 `/api/summarize` POST 请求)
+- `dto.SummarizationRequestDto`: 摘要请求DTO (包含 URL)
+- `dto.SummarizationResponseDto`: 摘要响应DTO (包含摘要结果)
 
 ## 数据库设计 (初步)
 
