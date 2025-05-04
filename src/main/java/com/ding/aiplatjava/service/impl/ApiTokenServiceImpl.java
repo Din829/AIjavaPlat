@@ -118,20 +118,51 @@ public class ApiTokenServiceImpl implements ApiTokenService {
         // 1. 根据 userId 和 provider 查询 Token 实体
         ApiToken apiToken = apiTokenMapper.selectByUserIdAndProvider(userId, provider);
 
+        // --- 详细打印从 Mapper 返回的 ApiToken 对象所有字段 ---
+        if (apiToken != null) {
+            log.debug("=== ApiToken object returned by Mapper START ===");
+            log.debug("ID        : {}", apiToken.getId());
+            log.debug("UserID    : {}", apiToken.getUserId());
+            log.debug("Provider  : {}", apiToken.getProvider());
+            log.debug("TokenValue: {}", apiToken.getTokenValue()); // <-- 重点观察这里
+            log.debug("CreatedAt : {}", apiToken.getCreatedAt());
+            log.debug("UpdatedAt : {}", apiToken.getUpdatedAt());
+            log.debug("=== ApiToken object returned by Mapper END ===");
+        } else {
+             log.debug("ApiToken object returned by Mapper is NULL for userId: {}, provider: {}", userId, provider);
+        }
+        // --- ★★★ 详细打印结束 ★★★ ---
+
         // 2. 检查 Token 是否存在
         if (apiToken == null) {
             log.warn("No API token found for user ID: {} and provider: {}", userId, provider);
             throw new ResourceNotFoundException("未找到用户 " + userId + " 的 " + provider + " API Token");
         }
 
+        // --- 日志增强: 打印从数据库获取的 Token 信息 ---
+        log.debug("Retrieved ApiToken entity: ID={}, Provider={}, EncryptedValue='{}'", 
+                  apiToken.getId(), apiToken.getProvider(), apiToken.getTokenValue());
+
         // 3. 解密 Token 值
+        String encryptedValueFromDb = apiToken.getTokenValue();
+        // --- 日志增强: 检查值是否为 null ---
+        if (encryptedValueFromDb == null) {
+            log.error("Encrypted token value from DB is NULL for token ID: {}, user ID: {}, provider: {}", 
+                      apiToken.getId(), userId, provider);
+            throw new RuntimeException("数据库中存储的 Token 值为空，无法解密");
+        }
+        
         try {
+            // --- 日志增强: 打印即将解密的值 ---
+            log.debug("Attempting to decrypt value: '{}'", encryptedValueFromDb);
             // 使用注入的 encryptionUtil 实例调用非静态方法
-            String decryptedValue = encryptionUtil.decrypt(apiToken.getTokenValue());
+            String decryptedValue = encryptionUtil.decrypt(encryptedValueFromDb);
             log.info("Successfully decrypted token for user ID: {} and provider: {}", userId, provider);
             return decryptedValue;
         } catch (Exception e) {
-            log.error("Failed to decrypt token with ID: {} for user: {} and provider: {}", apiToken.getId(), userId, provider, e);
+            // --- 日志增强: 打印解密失败的具体异常 ---
+            log.error("Failed to decrypt token with ID: {} for user: {} and provider: {}. Exception Type: {}, Message: {}", 
+                      apiToken.getId(), userId, provider, e.getClass().getName(), e.getMessage(), e); // 添加异常详情 e
             // 考虑是否需要更具体的异常类型或处理方式
             throw new RuntimeException("Token 解密失败", e);
         }

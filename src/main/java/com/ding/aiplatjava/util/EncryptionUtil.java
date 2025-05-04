@@ -11,6 +11,8 @@ import javax.crypto.SecretKey;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -25,6 +27,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class EncryptionUtil {
 
+    private static final Logger log = LoggerFactory.getLogger(EncryptionUtil.class); // 添加日志记录器
     private static final String ALGORITHM = "AES";// 加密算法
     private static final String TRANSFORMATION = "AES/CBC/PKCS5Padding"; // 使用CBC模式和PKCS5Padding
     private static final int IV_LENGTH_BYTES = 16; // AES IV 通常为 16 字节
@@ -90,9 +93,17 @@ public class EncryptionUtil {
      * @throws RuntimeException 如果解密过程中发生错误 (例如密钥不匹配、数据损坏等)。
      */
     public String decrypt(String encryptedText) {
+        // --- 日志增强: 打印输入值 ---
+        log.debug("Decrypting input text: '{}'", encryptedText);
+        if (encryptedText == null || encryptedText.isEmpty()) {
+            log.error("Input encrypted text is null or empty.");
+            throw new IllegalArgumentException("不能解密空的或 null 的文本");
+        }
         try {
             // 1. Base64 解码
             byte[] combined = Base64.getDecoder().decode(encryptedText);
+            // --- 日志增强: 打印解码后长度 ---
+            log.debug("Base64 decoded length: {} bytes", combined.length);
 
             // 2. 检查解码后的字节数组是否小于IV长度
             if (combined.length < IV_LENGTH_BYTES) {
@@ -105,6 +116,9 @@ public class EncryptionUtil {
             byteBuffer.get(iv);
             byte[] encryptedBytes = new byte[byteBuffer.remaining()];//意思就是获取剩余的字节数组
             byteBuffer.get(encryptedBytes);
+            // --- 日志增强: 打印分离出的 IV 和密文 (Base64 格式) ---
+            log.debug("Separated IV (Base64): {}", Base64.getEncoder().encodeToString(iv));
+            log.debug("Separated Ciphertext (Base64): {}", Base64.getEncoder().encodeToString(encryptedBytes));
 
             IvParameterSpec ivParameterSpec = new IvParameterSpec(iv);//意思就是初始化一个IV参数
 
@@ -116,10 +130,20 @@ public class EncryptionUtil {
             byte[] decryptedBytes = cipher.doFinal(encryptedBytes);
 
             // 6. 转换为字符串，将字节数组转换为字符串
-            return new String(decryptedBytes, StandardCharsets.UTF_8);
+            String decryptedString = new String(decryptedBytes, StandardCharsets.UTF_8);
+            log.debug("Decryption successful.");
+            return decryptedString;
+        } catch (IllegalArgumentException e) { // 捕获 Base64 解码错误
+            log.error("Base64 decoding failed for input text: '{}'. Error: {}", encryptedText, e.getMessage(), e);
+            throw new RuntimeException("Base64 解码失败", e);
         } catch (GeneralSecurityException e) {
+            // --- 日志增强: 打印详细安全异常 ---
+            log.error("Decryption failed due to security exception. Error: {}", e.getMessage(), e);
             // 在实际应用中，应该进行更细致的异常处理和日志记录
             throw new RuntimeException("Error during decryption", e);
+        } catch (Exception e) { // 捕获其他意外错误
+            log.error("Unexpected error during decryption for input: '{}'. Error: {}", encryptedText, e.getMessage(), e);
+            throw new RuntimeException("解密过程中发生意外错误", e);
         }
     }
 } 

@@ -74,9 +74,17 @@ public class SummarizationController {
         log.debug("已认证用户ID: {}", currentUserId);
 
         try {
-            // 2. 使用一个临时的API密钥（实际上会被忽略，使用全局配置）
-            String apiKey = "sk-temp-key-will-be-ignored";
-            log.info("使用临时API密钥（将被忽略，实际使用全局配置）");
+            // 2. 获取用户的OpenAI API密钥
+            String provider = "openai"; // 指定提供商为OpenAI
+            log.debug("正在获取用户ID: {} 的 {} API密钥", currentUserId, provider);
+            String apiKey = apiTokenService.getDecryptedTokenValueByProvider(currentUserId, provider);
+
+            if (apiKey == null || apiKey.isEmpty()) {
+                log.warn("用户ID: {} 的 {} API密钥为空，将使用全局配置", currentUserId, provider);
+                throw new ResourceNotFoundException("未找到API密钥，请先添加您的OpenAI密钥");
+            }
+
+            log.info("成功获取用户的API密钥");
 
             // 3. 提取网页文本
             log.debug("正在从URL提取文本: {}", requestDto.getUrl());
@@ -87,7 +95,7 @@ public class SummarizationController {
             }
             log.debug("文本提取成功。长度: {}", webText.length());
 
-            // 4. 调用 AI 服务进行摘要
+            // 4. 调用 AI 服务进行摘要，传入用户的API密钥
             log.debug("正在调用AI服务进行摘要...");
             String summary = aiService.summarizeText(webText, apiKey);
             log.info("URL摘要生成成功: {}", requestDto.getUrl());

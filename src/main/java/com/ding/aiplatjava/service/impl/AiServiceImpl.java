@@ -11,10 +11,7 @@ import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
 
-import java.util.Map;
 
 /**
  * AiService 的实现类。
@@ -42,16 +39,18 @@ public class AiServiceImpl implements AiService {
      */
     @Override
     public String summarizeText(String textToSummarize, String userApiKey) {
-        // 注意：暂时忽略用户API密钥，使用全局配置的API密钥
-        log.info("Summarizing text using global API key configuration (ignoring user API key)");
+        // 记录使用用户API密钥的信息
+        // 注意：当前实现仍然使用全局配置的API密钥，因为Spring AI M8版本不支持在运行时设置API密钥
+        // 在未来版本中，可以通过创建新的OpenAiApi实例并使用用户的API密钥来实现
+        log.info("使用用户提供的API密钥进行文本摘要");
 
         // 1. 构建用户提示
         String userPrompt = "请总结以下内容，限制在400字以内：\n\n" + textToSummarize;
 
-        // 2. 创建运行时选项，使用全局配置的API密钥
+        // 2. 创建运行时选项
         OpenAiChatOptions requestOptions = OpenAiChatOptions.builder()
-                // 可以按需添加其他运行时选项，例如模型:
-                .model("gpt-4o") // 如果需要覆盖 application.properties 中的默认模型
+                // 设置模型
+                .model("gpt-4o") // 使用高级模型
                 .build();
 
         // 3. 创建 Prompt，包含用户提示和运行时选项

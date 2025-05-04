@@ -17,4 +17,13 @@ public class SummarizationResponseDto {
      * 生成的摘要文本。
      */
     private String summary;
-} 
+
+    /**
+     * 手动添加构造函数，以防Lombok注解不起作用。
+     *
+     * @param summary 摘要文本
+     */
+    public SummarizationResponseDto(String summary) {
+        this.summary = summary;
+    }
+}
