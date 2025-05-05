@@ -92,7 +92,32 @@
 
 ### 任务6.2: 集成测试
 - [ ] 编写API集成测试
-- [ ] 测试端到端流程
+    - [x] 测试 `AuthController`:
+        - [x] `POST /api/auth/login` (无效凭据登录)
+    - [x] 测试 `ApiTokenController`:
+        - [x] `GET /api/tokens` (获取用户Token列表)
+        - [x] `DELETE /api/tokens/{id}` (删除指定Token)
+    - [x] 测试 `PromptController` (CRUD):
+        - [x] `GET /api/prompts` (获取用户Prompt列表)
+        - [x] `POST /api/prompts` (创建Prompt)
+        - [x] `GET /api/prompts/{id}` (获取指定Prompt)
+        - [x] `PUT /api/prompts/{id}` (更新指定Prompt)
+        - [x] `DELETE /api/prompts/{id}` (删除指定Prompt)
+    - [x] 测试 `SummarizationController`:
+        - [x] `POST /api/summarize` (无效URL)
+        - [x] `POST /api/summarize` (用户无有效API Token情况)
+    - [x] 测试API安全性:
+        - [x] 未认证访问受保护端点 (Tokens, Prompts, Summarize)
+        - [x] 使用过期/无效JWT访问受保护端点
+        - [ ] 测试CORS配置 // 推迟至前后端联调阶段
+    - [x] 测试API授权:
+        - [x] 跨用户访问/修改资源 (Tokens, Prompts)
+- [ ] 测试端到端流程:
+    - [ ] 完整业务流程 (例如: 注册 -> 登录 -> 添加Token -> 添加Prompt -> 使用Prompt进行摘要)
+    - [ ] 包含错误处理的流程 (例如: 摘要时Token无效或URL无法访问)
+- [ ] 性能和边界测试:
+    - [ ] 测试大型网页摘要处理
+    - [ ] 测试API请求限制和超时处理 (如果已实现)
 
 ## 阶段7: 前端开发 (未来计划)
 

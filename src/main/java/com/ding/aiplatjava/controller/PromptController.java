@@ -1,6 +1,8 @@
 package com.ding.aiplatjava.controller;
 
 import java.util.List;
+import java.util.stream.Collectors;
+import java.util.Collections;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -22,6 +24,7 @@ import com.ding.aiplatjava.entity.Prompt;
 import com.ding.aiplatjava.entity.User;
 import com.ding.aiplatjava.service.PromptService;
 import com.ding.aiplatjava.service.UserService;
+import com.ding.aiplatjava.dto.PromptDto;
 
 /**
  * Prompt 相关API控制器
@@ -55,13 +58,26 @@ public class PromptController {
 
     /**
      * 获取当前用户的所有Prompts
-     * @return Prompt列表
+     * @return Prompt DTO 列表
      */
     @GetMapping
-    public ResponseEntity<List<Prompt>> getCurrentUserPrompts() {
+    public ResponseEntity<List<PromptDto>> getCurrentUserPrompts() {
         User currentUser = getCurrentUser();
         List<Prompt> prompts = promptService.getPromptsByUserId(currentUser.getId());
-        return ResponseEntity.ok(prompts);
+
+        // ---- 临时调试日志 ----
+        System.out.println("--- Debug: Fetched Prompts from Service ---");
+        prompts.forEach(p -> {
+            System.out.println("Prompt ID: " + p.getId() + ", CreatedAt: " + p.getCreatedAt() + ", UpdatedAt: " + p.getUpdatedAt());
+        });
+        System.out.println("--- End Debug ---");
+        // ---- 结束调试日志 ----
+
+        // 将 List<Prompt> 转换为 List<PromptDto>
+        List<PromptDto> promptDtos = prompts.stream()
+                                            .map(this::convertToDto) // 使用转换方法
+                                            .collect(Collectors.toList());
+        return ResponseEntity.ok(promptDtos);
     }
 
     /**
@@ -123,5 +139,19 @@ public class PromptController {
         } else {
             return ResponseEntity.notFound().build();
         }
+    }
+
+    private PromptDto convertToDto(Prompt prompt) {
+        if (prompt == null) {
+            return null;
+        }
+        PromptDto dto = new PromptDto();
+        dto.setId(prompt.getId());
+        dto.setTitle(prompt.getTitle());
+        dto.setContent(prompt.getContent());
+        dto.setCategory(prompt.getCategory());
+        dto.setCreatedAt(prompt.getCreatedAt());
+        dto.setUpdatedAt(prompt.getUpdatedAt());
+        return dto;
     }
 } 

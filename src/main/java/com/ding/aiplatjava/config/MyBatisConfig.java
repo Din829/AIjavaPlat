@@ -15,9 +15,10 @@ import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 /**
  * MyBatis配置类
  * 用于配置MyBatis的基本设置和扫描Mapper接口
+ * [注意] 暂时注释掉，让 Spring Boot 自动配置生效，以解决 LocalDateTime 映射问题。
  */
-@Configuration // 标记为Spring配置类，会被自动扫描并处理
-@MapperScan("com.ding.aiplatjava.mapper") // 指定Mapper接口所在的包，自动扫描
+//@Configuration // 暂时注释掉 @Configuration
+@MapperScan("com.ding.aiplatjava.mapper") // 保留 MapperScan，因为它可能在主类上没有配置
 public class MyBatisConfig {
 
     /**
@@ -28,7 +29,7 @@ public class MyBatisConfig {
      * @return SqlSessionFactory实例
      * @throws Exception 可能的异常
      */
-    @Bean
+    //@Bean // 暂时注释掉 @Bean
     public SqlSessionFactory sqlSessionFactory(DataSource dataSource) throws Exception {
         SqlSessionFactoryBean factoryBean = new SqlSessionFactoryBean();
         factoryBean.setDataSource(dataSource);
@@ -50,7 +51,7 @@ public class MyBatisConfig {
      * @param dataSource 数据源
      * @return 事务管理器实例
      */
-    @Bean
+    //@Bean // 暂时注释掉 @Bean
     public DataSourceTransactionManager transactionManager(DataSource dataSource) {
         return new DataSourceTransactionManager(dataSource);
     }
@@ -62,7 +63,7 @@ public class MyBatisConfig {
      * @param sqlSessionFactory SqlSessionFactory实例
      * @return SqlSessionTemplate实例
      */
-    @Bean
+    //@Bean // 暂时注释掉 @Bean
     public SqlSessionTemplate sqlSessionTemplate(@Qualifier("sqlSessionFactory") SqlSessionFactory sqlSessionFactory) {
         return new SqlSessionTemplate(sqlSessionFactory);
     }

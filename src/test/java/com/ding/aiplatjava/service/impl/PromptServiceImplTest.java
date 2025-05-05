@@ -135,26 +135,53 @@ class PromptServiceImplTest {
 
     @Test
     void createPrompt_Success() {
-        // Given: 创建一个不带 ID 和时间戳的 Prompt 对象
-        Prompt newPrompt = new Prompt(null, null, "New Title", "New Content", "New Cat", null, null);
-        // 模拟 insert 操作 (不需要模拟返回值，因为 insert 后会直接返回传入的对象)
-        // when(promptMapper.insert(any(Prompt.class))).thenReturn(1); // 也可以模拟返回影响行数，但非必须
+        // Given: 
+        // 1. 要创建的 Prompt 数据 (无 ID 和时间戳)
+        Prompt newPromptData = new Prompt(null, null, "New Title", "New Content", "New Cat", null, null);
+        
+        // 2. 预期的、插入后从数据库查询返回的 Prompt 对象状态
+        //    (包含模拟的 ID 和时间戳，因为 Service 现在会重新查询)
+        Long expectedId = 99L; // 假设一个 ID
+        LocalDateTime expectedTimestamp = LocalDateTime.now(); 
+        Prompt expectedReturnedPrompt = new Prompt(expectedId, userId, "New Title", "New Content", "New Cat", expectedTimestamp, expectedTimestamp);
+
+        // 3. 模拟 Mapper 行为:
+        //    - 模拟 insert (可以不指定返回值，但要确保 prompt 对象被捕获以便后续验证 ID)
+        //      或者更简单的方式是：假设 insert 成功
+        //    - **关键：模拟 selectById 调用**，当 Service 在 insert 后调用 selectById 时，返回我们预期的对象
+        //      注意：这里使用 any(Long.class) 因为我们无法轻易预测 insert 后生成的 ID。
+        //      更精确的做法是使用 ArgumentCaptor 捕获 insert 时的 prompt 对象，获取 ID 再模拟，但 any() 更简单。
+        //      为了让 selectById 返回预设的ID，我们假设insert后 getId() 返回 expectedId
+        //      这需要在调用 Service 前准备好 newPromptData (虽然 Service 内部会重新 select)
+        newPromptData.setId(expectedId); // 临时设置，以便 Service 调用 selectById(expectedId)
+        when(promptMapper.selectById(expectedId)).thenReturn(expectedReturnedPrompt);
+        // 也可以只模拟 insert 返回 1，但这不影响 selectById 的模拟
+        // when(promptMapper.insert(any(Prompt.class))).thenReturn(1);
 
         // When: 调用 service 方法创建 Prompt
-        Prompt created = promptService.createPrompt(newPrompt, userId);
+        // 传入的是 newPromptData，但 Service 内部的逻辑是 insert -> selectById
+        Prompt created = promptService.createPrompt(newPromptData, userId);
 
-        // Then: 验证返回的对象不为 null，userId, createdAt, updatedAt 已被设置
+        // Then: 
+        // 1. 验证返回的对象不为 null，并且等于我们预期的返回对象
         assertNotNull(created);
-        assertEquals(userId, created.getUserId());
-        assertEquals("New Title", created.getTitle());
-        assertNotNull(created.getCreatedAt());
+        assertEquals(expectedReturnedPrompt, created);
+        assertEquals(expectedId, created.getId()); // 校验ID
+        assertEquals(userId, created.getUserId()); // 校验UserID
+        assertNotNull(created.getCreatedAt()); // 校验时间戳非空
         assertNotNull(created.getUpdatedAt());
-        // 验证 mapper 的 insert 方法被调用了一次，并且传入的对象包含了正确的 userId 和时间戳
+
+        // 2. 验证 mapper 的 insert 方法被调用了一次
+        //    注意：传入 insert 的对象现在不包含时间戳了
         verify(promptMapper, times(1)).insert(argThat(p -> 
             Objects.equals(p.getUserId(), userId) && 
-            p.getCreatedAt() != null && 
-            p.getUpdatedAt() != null
+            Objects.equals(p.getTitle(), "New Title") && // 可以添加更多字段校验
+            p.getCreatedAt() == null && // 确认 Service 层没有设置时间戳
+            p.getUpdatedAt() == null
         ));
+        
+        // 3. 验证 mapper 的 selectById 方法也被调用了一次，并且 ID 是我们预期的
+        verify(promptMapper, times(1)).selectById(expectedId);
     }
 
     // --- Test updatePrompt --- 

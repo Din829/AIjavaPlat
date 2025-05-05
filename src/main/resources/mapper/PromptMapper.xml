@@ -21,8 +21,8 @@
 
     <!-- 插入Prompt -->
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO prompts (user_id, title, content, category, created_at, updated_at)
-        VALUES (#{userId}, #{title}, #{content}, #{category}, #{createdAt}, #{updatedAt})
+        INSERT INTO prompts (user_id, title, content, category)
+        VALUES (#{userId}, #{title}, #{content}, #{category})
     </insert>
 
     <!-- 根据ID更新Prompt -->
@@ -30,8 +30,7 @@
         UPDATE prompts
         SET title = #{title},
             content = #{content},
-            category = #{category},
-            updated_at = #{updatedAt}
+            category = #{category}
         WHERE id = #{id}
           AND user_id = #{userId} <!-- Optional: Add user_id check for security -->
     </update>

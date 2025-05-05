@@ -65,17 +65,11 @@ public class PromptServiceImpl implements PromptService {
     @Override
     @Transactional // 保证插入操作的原子性
     public Prompt createPrompt(Prompt prompt, Long userId) {
-        // 强制设置传入的 prompt 实体的 userId 为当前操作用户 ID
         prompt.setUserId(userId);
-        LocalDateTime now = LocalDateTime.now();
-        // 设置创建和更新时间
-        prompt.setCreatedAt(now);
-        prompt.setUpdatedAt(now);
-        // 调用 Mapper 执行数据库插入
         promptMapper.insert(prompt);
-        // MyBatis 配置了 useGeneratedKeys="true" keyProperty="id"，
-        // 因此插入后，传入的 prompt 对象会被自动填充上数据库生成的 ID。
-        return prompt;
+        // 插入后，数据库会自动填充 ID 和时间戳
+        // 为了返回包含时间戳的完整对象，我们需要重新查询一次
+        return promptMapper.selectById(prompt.getId()); // 返回新查询的对象
     }
 
     /**
@@ -92,37 +86,20 @@ public class PromptServiceImpl implements PromptService {
     @Override
     @Transactional // 保证查询和更新操作的原子性
     public Prompt updatePrompt(Long id, Prompt promptDetails, Long userId) {
-        // 1. 先根据 ID 从数据库获取当前的 Prompt 实体
         Prompt existingPrompt = promptMapper.selectById(id);
-        
-        // 2. 校验 Prompt 是否存在，以及其 userId 是否与请求的用户 ID 匹配
         if (existingPrompt != null && Objects.equals(existingPrompt.getUserId(), userId)) {
-            // 3. 使用传入的 promptDetails 更新 existingPrompt 中允许修改的字段
             existingPrompt.setTitle(promptDetails.getTitle());
             existingPrompt.setContent(promptDetails.getContent());
             existingPrompt.setCategory(promptDetails.getCategory());
-            // 更新"更新时间"
-            existingPrompt.setUpdatedAt(LocalDateTime.now());
-            
-            // 4. (可选，增强健壮性) 设置 userId 用于 Mapper 层面的安全检查 (updateById SQL 中包含 AND user_id = #{userId})
-            // 尽管业务层已校验，但 Mapper 层再校验一次可以防止逻辑错误。
-            existingPrompt.setUserId(userId);
-
-            // 5. 调用 Mapper 执行数据库更新
+            existingPrompt.setUserId(userId); // 保留，用于Mapper层校验
             int updatedRows = promptMapper.updateById(existingPrompt);
-            
-            // 6. 检查更新是否成功 (影响行数大于0)
             if (updatedRows > 0) {
-                 // 7. 更新成功，从数据库重新获取最新的 Prompt 数据并返回
-                 //    (确保返回的数据包含数据库实际更新的时间戳等)
+                // 更新成功，重新查询以获取数据库更新的 updatedAt
                 return promptMapper.selectById(id);
             } else {
-                // 更新影响行数为0，可能意味着并发冲突或其他问题，此处返回 null
-                // 后续可考虑抛出异常，例如 OptimisticLockingFailureException
                 return null;
             }
         }
-        // Prompt 不存在或用户无权访问，返回 null
         return null;
     }
 
