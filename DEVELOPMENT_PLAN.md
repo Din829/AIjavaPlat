@@ -88,7 +88,7 @@
 - [x] 编写Util层测试 (JwtUtil)
 - [x] 编写Service层测试 (UserDetailsServiceImpl)
 - [x] 编写Security组件测试 (JwtAuthFilter)
-- [ ] 编写Controller层测试 (AuthController, PromptController, ApiTokenController)
+- [x] 编写Controller层测试 (AuthController, PromptController, ApiTokenController)
 
 ### 任务6.2: 集成测试
 - [ ] 编写API集成测试

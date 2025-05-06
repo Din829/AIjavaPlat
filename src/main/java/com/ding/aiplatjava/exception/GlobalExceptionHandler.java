@@ -1,13 +1,18 @@
 package com.ding.aiplatjava.exception;
 
 import lombok.Data;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.context.request.WebRequest;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
+import java.util.stream.Collectors;
 
 /**
  * 全局异常处理器
@@ -46,6 +51,52 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * 处理无效凭证异常 (例如，登录时用户名或密码错误)
+     *
+     * @param ex 捕获到的 BadCredentialsException 异常
+     * @param request 当前 Web 请求
+     * @return 包含错误详情的 ResponseEntity，状态码 401
+     */
+    @ExceptionHandler(BadCredentialsException.class) // 专门处理 BadCredentialsException
+    public ResponseEntity<?> handleBadCredentialsException(
+            BadCredentialsException ex, WebRequest request) {
+
+        ErrorDetails errorDetails = new ErrorDetails(
+                LocalDateTime.now(),
+                "无效的凭证", // 可以自定义更友好的消息
+                request.getDescription(false));
+
+        // 返回 401 状态码
+        return new ResponseEntity<>(errorDetails, HttpStatus.UNAUTHORIZED);
+    }
+
+    /**
+     * 处理请求体验证失败异常 (例如 @Valid 注解触发)
+     *
+     * @param ex 捕获到的 MethodArgumentNotValidException 异常
+     * @param request 当前 Web 请求
+     * @return 包含验证错误详情的 ResponseEntity，状态码 400
+     */
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<?> handleValidationExceptions(
+            MethodArgumentNotValidException ex, WebRequest request) {
+
+        // 从异常中提取所有字段的验证错误信息
+        String errors = ex.getBindingResult()
+                .getFieldErrors()
+                .stream()
+                .map(error -> error.getField() + ": " + error.getDefaultMessage())
+                .collect(Collectors.joining(", "));
+
+        ErrorDetails errorDetails = new ErrorDetails(
+                LocalDateTime.now(),
+                "验证失败: " + errors, // 将具体的验证错误放入消息中
+                request.getDescription(false));
+
+        return new ResponseEntity<>(errorDetails, HttpStatus.BAD_REQUEST);
+    }
+
+    /**
      * 处理所有其他未明确处理的异常
      * 作为默认的异常处理器，捕获所有其他类型的异常
      *
@@ -53,17 +104,26 @@ public class GlobalExceptionHandler {
      * @param request 当前Web请求
      * @return 包含错误详情的ResponseEntity，状态码500
      */
-    @ExceptionHandler(Exception.class) // 处理所有类型的异常
+    @ExceptionHandler(Exception.class)
     public ResponseEntity<?> handleGlobalException(
             Exception ex, WebRequest request) {
 
-        // 创建错误详情对象
+        // !!! 重要: 检查是否是 ResponseStatusException，如果是，则优先使用它的状态码和原因 !!!
+        if (ex instanceof ResponseStatusException rse) {
+            ErrorDetails errorDetails = new ErrorDetails(
+                    LocalDateTime.now(),
+                    rse.getReason() != null ? rse.getReason() : "发生错误", // 使用 ResponseStatusException 的原因
+                    request.getDescription(false));
+            // 使用 ResponseStatusException 的状态码
+            return new ResponseEntity<>(errorDetails, rse.getStatusCode());
+        }
+
+        // 对于其他所有未知异常，返回 500
         ErrorDetails errorDetails = new ErrorDetails(
                 LocalDateTime.now(),
-                ex.getMessage(),
+                ex.getMessage() != null ? ex.getMessage() : "发生内部错误",
                 request.getDescription(false));
 
-        // 返回500状态码和错误详情
         return new ResponseEntity<>(errorDetails, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
@@ -71,7 +131,8 @@ public class GlobalExceptionHandler {
      * 错误详情类
      * 定义了API错误响应的标准格式
      */
-    @Data // Lombok注解，自动生成getter、setter等方法
+    @Data
+    @RequiredArgsConstructor
     public static class ErrorDetails {
         /**
          * 错误发生的时间戳
@@ -92,7 +153,4 @@ public class GlobalExceptionHandler {
     // 可以添加更多的异常处理方法，例如：
     // @ExceptionHandler(DataIntegrityViolationException.class)
     // public ResponseEntity<?> handleDataIntegrityViolationException(...) { ... }
-
-    // @ExceptionHandler(MethodArgumentNotValidException.class)
-    // public ResponseEntity<?> handleValidationExceptions(...) { ... }
 }

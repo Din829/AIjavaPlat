@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.ding.aiplatjava.dto.AuthResponseDto;
 import com.ding.aiplatjava.dto.LoginRequestDto;
 import com.ding.aiplatjava.dto.RegisterRequestDto;
+import com.ding.aiplatjava.dto.UserDto;
 import com.ding.aiplatjava.entity.User;
 import com.ding.aiplatjava.service.UserService;
 import com.ding.aiplatjava.util.JwtUtil;
@@ -65,7 +66,7 @@ public class AuthController {
      * 处理用户注册请求。
      *
      * @param registerRequest 包含注册信息的 DTO。
-     * @return 注册成功或失败的响应实体。
+     * @return 注册成功或失败的响应实体。成功时返回包含新用户信息的 UserDto。
      */
     @PostMapping("/register")
     public ResponseEntity<?> register(@RequestBody RegisterRequestDto registerRequest) {
@@ -89,9 +90,18 @@ public class AuthController {
         newUser.setPassword(registerRequest.getPassword()); // 传递原始密码给 Service
 
         try {
-            // 调用 UserService 创建用户 (该方法需要添加密码加密逻辑)
-            userService.registerUser(newUser);
-            return ResponseEntity.status(HttpStatus.CREATED).body("User registered successfully!");
+            // 调用 UserService 创建用户 (假设该方法返回创建后的 User 对象)
+            User registeredUser = userService.registerUser(newUser);
+
+            // 将返回的 User 实体转换为 UserDto (确保 UserDto 不含敏感信息)
+            UserDto userDto = new UserDto();
+            userDto.setId(registeredUser.getId());
+            userDto.setUsername(registeredUser.getUsername());
+            userDto.setEmail(registeredUser.getEmail());
+            // 假设 UserDto 定义了这些字段，并且没有 password
+
+            // 返回 201 Created 状态码和 UserDto 作为 JSON 响应体
+            return ResponseEntity.status(HttpStatus.CREATED).body(userDto);
         } catch (Exception e) {
             // 处理可能的异常，例如数据库错误
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error registering user: " + e.getMessage());
