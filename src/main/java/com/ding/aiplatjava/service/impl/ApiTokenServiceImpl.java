@@ -136,7 +136,12 @@ public class ApiTokenServiceImpl implements ApiTokenService {
         // 2. 检查 Token 是否存在
         if (apiToken == null) {
             log.warn("No API token found for user ID: {} and provider: {}", userId, provider);
-            throw new ResourceNotFoundException("未找到用户 " + userId + " 的 " + provider + " API Token");
+            // 当 SummarizationController 调用时，如果找不到Token，我们希望它能优雅处理，
+            // 而不是直接抛出 ResourceNotFoundException 导致404。 
+            // SummarizationController 期望此方法在找不到或无法使用Token时返回null，然后它会返回400。
+            // 因此，此处应该返回null，而不是抛出异常。
+            // throw new ResourceNotFoundException("未找到用户 " + userId + " 的 " + provider + " API Token");
+            return null; // 修改1: 如果Token实体未找到，返回null
         }
 
         // --- 日志增强: 打印从数据库获取的 Token 信息 ---
@@ -146,10 +151,11 @@ public class ApiTokenServiceImpl implements ApiTokenService {
         // 3. 解密 Token 值
         String encryptedValueFromDb = apiToken.getTokenValue();
         // --- 日志增强: 检查值是否为 null ---
-        if (encryptedValueFromDb == null) {
-            log.error("Encrypted token value from DB is NULL for token ID: {}, user ID: {}, provider: {}", 
+        if (encryptedValueFromDb == null || encryptedValueFromDb.isEmpty()) { // 也检查isEmpty()
+            log.error("Encrypted token value from DB is NULL or empty for token ID: {}, user ID: {}, provider: {}", 
                       apiToken.getId(), userId, provider);
-            throw new RuntimeException("数据库中存储的 Token 值为空，无法解密");
+            // throw new RuntimeException("数据库中存储的 Token 值为空，无法解密");
+            return null; // 修改2: 如果加密值为空或null，返回null
         }
         
         try {
@@ -159,12 +165,12 @@ public class ApiTokenServiceImpl implements ApiTokenService {
             String decryptedValue = encryptionUtil.decrypt(encryptedValueFromDb);
             log.info("Successfully decrypted token for user ID: {} and provider: {}", userId, provider);
             return decryptedValue;
-        } catch (Exception e) {
+        } catch (Exception e) { // 主要捕获 encryptionUtil.decrypt() 可能抛出的 RuntimeException
             // --- 日志增强: 打印解密失败的具体异常 ---
             log.error("Failed to decrypt token with ID: {} for user: {} and provider: {}. Exception Type: {}, Message: {}", 
                       apiToken.getId(), userId, provider, e.getClass().getName(), e.getMessage(), e); // 添加异常详情 e
-            // 考虑是否需要更具体的异常类型或处理方式
-            throw new RuntimeException("Token 解密失败", e);
+            // throw new RuntimeException("Token 解密失败", e);
+            return null; // 修改3: 解密失败时，返回null
         }
     }
 } 

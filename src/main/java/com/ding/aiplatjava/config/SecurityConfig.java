@@ -1,7 +1,11 @@
 package com.ding.aiplatjava.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.MediaType;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -14,11 +18,14 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 import com.ding.aiplatjava.security.JwtAuthFilter;
 
 import lombok.RequiredArgsConstructor;
+import java.time.LocalDateTime;
+import java.util.Map;
 
 /**
  * Spring Security 配置类
@@ -31,6 +38,7 @@ public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter; // 注入 JWT 认证过滤器
     private final UserDetailsService userDetailsService; // 注入用户详情服务
+    private final ObjectMapper objectMapper; // Added ObjectMapper injection
 
     /**
      * 定义密码编码器 Bean。
@@ -94,6 +102,31 @@ public class SecurityConfig {
             // 3. 配置会话管理 (Session Management) 为无状态
             .sessionManagement(session -> session
                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+            )
+            // 2.1 Configure custom authentication entry point and access denied handler
+            .exceptionHandling(exceptions -> exceptions
+                .authenticationEntryPoint((request, response, authException) -> {
+                    response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    response.getWriter().write(objectMapper.writeValueAsString(
+                        Map.of("timestamp", LocalDateTime.now().toString(),
+                               "status", HttpServletResponse.SC_UNAUTHORIZED,
+                               "error", "Unauthorized",
+                               "message", authException.getMessage(),
+                               "path", request.getRequestURI())
+                    ));
+                })
+                .accessDeniedHandler((request, response, accessDeniedException) -> {
+                    response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                    response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                    response.getWriter().write(objectMapper.writeValueAsString(
+                        Map.of("timestamp", LocalDateTime.now().toString(),
+                               "status", HttpServletResponse.SC_FORBIDDEN,
+                               "error", "Forbidden",
+                               "message", accessDeniedException.getMessage(),
+                               "path", request.getRequestURI())
+                    ));
+                })
             )
             // 4. 配置认证提供者
             .authenticationProvider(authenticationProvider()) // 使用上面定义的 AuthenticationProvider
