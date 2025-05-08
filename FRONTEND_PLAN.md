@@ -1,3 +1,14 @@
+# 前端开发规则
+
+在进行前端开发时，请遵循以下规则：
+
+1.  **中文注释**: 为关键的代码逻辑、功能说明以及复杂的语法实现添加清晰的中文注释。
+2.  **阶段性更新**: 在完成本计划（`FRONTEND_PLAN.md`）中定义的每一个阶段后，及时更新本文档以反映最新进度。
+3.  **先分析再编码**: 在开始具体编码工作前，进行充分的需求分析和技术方案思考。
+4.  **细致严谨**:在开发过程中保持细心和严谨的态度，注重代码质量和细节。
+
+---
+
 # 社内業務サポートAIプラットフォーム (内部业务支持AI平台) - 前端规划 (MVP)
 
 ## 1. 项目概述
@@ -139,4 +150,95 @@
 *本文档的这一部分旨在提供前端开发启动前的一些准备建议。*
 
 ---
-*这是一个初步规划，随着开发的进行会不断细化和调整。* 
+*这是一个初步规划，随着开发的进行会不断细化和调整。*
+
+## 前端开发迭代计划 (MVP)
+
+以下计划旨在逐步构建前端功能，保持灵活性并允许持续测试。
+
+**阶段 1: 项目基础与核心结构 (Project Foundation & Core Structure)**
+
+*   **目标:** 初始化项目，集成核心库，并建立基本的前端架构。
+*   **主要任务:**
+    1.  **项目初始化:** 使用 Vite 创建 Vue 3 + TypeScript 项目。 (已完成)
+    2.  **依赖安装:** 集成 Vue Router, Pinia, Axios, Naive UI。 (已完成)
+    3.  **基础配置:**
+        *   设置目录结构 (`router`, `stores`, `services`, `views`, `components`, `layouts`)。 (已完成)
+        *   集成并配置 Naive UI, Pinia, Vue Router。 (已完成)
+        *   配置 ESLint 和 Prettier。 (已完成)
+    4.  **环境变量:** 设置 `.env` 文件 (如 `VITE_API_BASE_URL`)。 (已完成)
+
+**阶段 2: 布局、路由与认证基础 (Layout, Routing & Auth Basics)**
+
+*   **目标:** 创建应用主布局，设置基础路由，并开始用户认证模块。
+*   **主要任务:**
+    1.  **主布局 (`AppLayout.vue`):** 包含导航栏和内容区域 (`<router-view>`)。 (初始结构已完成)
+    2.  **基础路由:** 定义登录 (`/login`)、注册 (`/register`) 和仪表盘 (`/dashboard`) 占位路由。 (已完成)
+    3.  **认证状态管理 (Pinia - `authStore.ts`):** 管理用户、Token、认证状态。 (初始结构已完成)
+    4.  **认证服务 (`authService.ts`):** 封装登录/注册API调用。 (初始结构已完成)
+
+**阶段 3: 用户认证流程 (User Authentication Flow)**
+
+*   **目标:** 完成用户登录、注册功能及路由保护。
+*   **主要任务:**
+    1.  **登录页面 (`LoginPage.vue`):** UI 和调用 `authStore` 的登录逻辑。 (初始UI与占位逻辑已完成)
+    2.  **注册页面 (`RegisterPage.vue`):** UI 和调用 `authStore` 的注册逻辑。
+    3.  **登出功能:** 在布局中添加登出按钮，调用 `authStore.logout()`。
+    4.  **路由守卫 (`router/index.ts`):** 实现基于认证状态的页面访问控制。
+
+**阶段 4: API客户端与全局错误处理 (API Client & Global Error Handling)**
+
+*   **目标:** 建立统一的API请求客户端并实现全局错误响应处理。
+*   **主要任务:**
+    1.  **Axios实例 (`apiClient.ts`):**
+        *   配置 `baseURL`。
+        *   请求拦截器：自动添加 JWT。
+        *   响应拦截器：根据 `FRONTEND_PLAN.md` 处理通用API错误 (如 401, 403, 5xx)。
+
+**阶段 5: API Token 管理 (API Token Management)**
+
+*   **目标:** 实现用户对自己AI API Token的CRUD操作。
+*   **主要任务:**
+    1.  **Token状态管理 (Pinia - `tokenStore.ts`)**
+    2.  **Token服务 (`tokenService.ts`)**
+    3.  **Token管理页面 (`/tokens`):**
+        *   列表展示 (Naive UI Table)。
+        *   新建表单/模态框 (Naive UI Modal/Form)。
+        *   删除确认 (Naive UI Popconfirm/Modal)。
+
+**阶段 6: Prompt 管理 (Prompt Management)**
+
+*   **目标:** 实现用户对常用Prompt的CRUD操作。
+*   **主要任务:**
+    1.  **Prompt状态管理 (Pinia - `promptStore.ts`)**
+    2.  **Prompt服务 (`promptService.ts`)**
+    3.  **Prompt列表页 (`/prompts`)**
+    4.  **新建Prompt页 (`/prompts/new`)**
+    5.  **编辑Prompt页 (`/prompts/:id/edit`)**
+
+**阶段 7: 网页内容摘要 (Web Article Summarization)**
+
+*   **目标:** 实现核心的网页摘要功能。
+*   **主要任务:**
+    1.  **摘要状态管理 (Pinia - `summarizeStore.ts`)**
+    2.  **摘要服务 (`summarizeService.ts`)**
+    3.  **摘要页面 (`/summarize` 或集成到Dashboard):**
+        *   URL输入。
+        *   (可选) Token选择。
+        *   结果展示与加载状态。
+        *   处理特定错误 (如用户Token无效)。
+
+**阶段 8: UI完善与组件化 (UI Polish & Componentization)**
+
+*   **目标:** 优化整体用户体验，提炼可复用组件。
+*   **主要任务:**
+    1.  **通用组件:** 根据需要创建或优化 (如确认模态框、页面标题等)。
+    2.  **导航栏完善:** 添加实际链接，根据认证状态显示不同内容。
+    3.  **样式统一:** 确保视觉一致性。
+
+**阶段 9: 测试与收尾 (Testing & Final Touches)**
+
+*   **目标:** 确保功能完整性和稳定性。
+*   **主要任务:**
+    1.  **功能测试:** 全面测试所有用户流程和边缘情况。
+    2.  **代码审查与重构:** 提升代码质量。 
