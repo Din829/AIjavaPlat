@@ -6,6 +6,9 @@ import com.ding.aiplatjava.exception.ResourceNotFoundException;
 import com.ding.aiplatjava.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.ArrayList;
@@ -82,6 +85,51 @@ public class UserController {
         UserDto userDto = convertToDto(user);
 
         // 返回200 OK状态码和用户DTO
+        return ResponseEntity.ok(userDto);
+    }
+
+    /**
+     * 获取当前登录用户的信息。
+     *
+     * HTTP请求: GET /api/users/me
+     *
+     * @return 包含当前用户DTO的ResponseEntity，状态码200
+     * @throws ResourceNotFoundException 如果无法获取当前用户信息
+     */
+    @GetMapping("/me")
+    public ResponseEntity<UserDto> getCurrentUser() {
+        // 1. 从 SecurityContextHolder 获取 Authentication 对象
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+        // 2. 检查 Authentication 对象是否存在以及是否已认证
+        if (authentication == null || !authentication.isAuthenticated()) {
+            throw new ResourceNotFoundException("User", "current", "Not authenticated");
+        }
+
+        // 3. 获取 Principal (通常是 UserDetails 对象或用户名字符串)
+        Object principal = authentication.getPrincipal();
+        String username;
+
+        if (principal instanceof UserDetails) {
+            // 如果 Principal 是 UserDetails 实例，直接获取用户名
+            username = ((UserDetails) principal).getUsername();
+        } else if (principal instanceof String) {
+            // 如果 Principal 是字符串 (有时可能发生)，直接使用它作为用户名
+            username = (String) principal;
+        } else {
+            // 无法识别 Principal 类型
+            throw new ResourceNotFoundException("User", "current", "Cannot determine username from principal");
+        }
+
+        // 4. 使用用户名从数据库中查找完整的 User 对象
+        //    这里我们假设 UserDetails 的 username 就是数据库中的 username
+        User user = userService.findByUsername(username)
+                .orElseThrow(() -> new ResourceNotFoundException("User", "username", username));
+
+        // 5. 将 User 实体转换为 UserDto
+        UserDto userDto = convertToDto(user);
+
+        // 6. 返回 200 OK 和用户 DTO
         return ResponseEntity.ok(userDto);
     }
 

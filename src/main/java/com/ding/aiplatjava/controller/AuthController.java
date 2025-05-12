@@ -44,9 +44,14 @@ public class AuthController {
      */
     @PostMapping("/login")
     public ResponseEntity<AuthResponseDto> login(@RequestBody LoginRequestDto loginRequest) {
+        // --- 添加日志 ---
+        System.out.println("Received login attempt for user: " + loginRequest.getUsernameOrEmail());
+        System.out.println("Received password (raw): [" + loginRequest.getPassword() + "]"); // 打印原始密码，用括号括起来以看清是否有空格
+        // --- 结束日志 ---
+
         // 1. 使用 AuthenticationManager 进行认证
         Authentication authentication = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(loginRequest.getUsername(), loginRequest.getPassword())
+                new UsernamePasswordAuthenticationToken(loginRequest.getUsernameOrEmail(), loginRequest.getPassword())
         );
 
         // 2. 将认证信息设置到 SecurityContext (虽然对于无状态应用不是必须的，但有时有用)

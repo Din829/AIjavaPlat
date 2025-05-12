@@ -30,9 +30,9 @@
  * - 导入 Vue logo SVG 文件（通过 import 语句）
  * - 这种方式让 TypeScript 能够正确识别类型
  */
-import HelloWorld from './components/HelloWorld.vue'
+// import HelloWorld from './components/HelloWorld.vue'
 // 导入 Vue logo SVG 文件
-import vueLogo from './assets/vue.svg'
+// import vueLogo from './assets/vue.svg'
 
 // 导入主应用布局组件
 import AppLayout from './layouts/AppLayout.vue';

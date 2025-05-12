@@ -20,6 +20,11 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import java.util.Arrays;
+import java.util.List;
 
 import com.ding.aiplatjava.security.JwtAuthFilter;
 
@@ -79,6 +84,31 @@ public class SecurityConfig {
     }
 
     /**
+     * 定义 CORS 配置源 Bean。
+     * 这个 Bean 提供了跨域请求的配置信息。
+     * @return CorsConfigurationSource 实例
+     */
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+        // 允许来自前端开发服务器的请求
+        configuration.setAllowedOrigins(List.of("http://localhost:5173"));
+        // 允许所有常见的 HTTP 方法
+        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        // 允许所有请求头
+        configuration.setAllowedHeaders(List.of("*"));
+        // 允许发送凭证 (如 cookies)
+        configuration.setAllowCredentials(true);
+        // 设置预检请求的最大缓存时间
+        configuration.setMaxAge(3600L); // 1 hour
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        // 对所有路径应用此配置
+        source.registerCorsConfiguration("/**", configuration);
+        return source;
+    }
+
+    /**
      * 配置安全过滤器链。
      * 定义了哪些请求需要认证，哪些可以公开访问，以及使用的认证机制等。
      *
@@ -89,6 +119,8 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
+            // 添加 CORS 配置
+            .cors(cors -> cors.configurationSource(corsConfigurationSource())) // 使用我们定义的 Bean
             // 1. 禁用 CSRF 保护 (因为我们使用无状态 JWT)
             .csrf(AbstractHttpConfigurer::disable)
             // 2. 配置请求授权规则 (Authorization)
@@ -131,7 +163,6 @@ public class SecurityConfig {
             // 4. 配置认证提供者
             .authenticationProvider(authenticationProvider()) // 使用上面定义的 AuthenticationProvider
             // 5. 添加 JWT 认证过滤器
-            // 将 jwtAuthFilter 添加到 UsernamePasswordAuthenticationFilter 之前执行
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         // 构建并返回过滤器链

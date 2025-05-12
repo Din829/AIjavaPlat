@@ -13,7 +13,8 @@
     "noUnusedParameters": true,
     // "erasableSyntaxOnly": true, // 暂时注释掉，此选项需要 TypeScript 5.5+，可能导致与当前环境兼容性问题
     "noFallthroughCasesInSwitch": true,
-    "noUncheckedSideEffectImports": true
+    "noUncheckedSideEffectImports": true,
+    "types": ["vite/client"]
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue"]
 }

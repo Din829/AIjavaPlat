@@ -25,30 +25,32 @@ public class UserDetailsServiceImpl implements UserDetailsService {
     /**
      * 根据用户名加载用户核心信息。
      *
-     * @param username 要加载其数据的用户的用户名。
+     * @param usernameOrEmail 要加载其数据的用户的用户名或邮箱。
      * @return 包含用户核心信息的 UserDetails 对象 (不能为空)。
-     * @throws UsernameNotFoundException 如果找不到具有给定用户名的用户。
+     * @throws UsernameNotFoundException 如果找不到具有给定用户名或邮箱的用户。
      */
     @Override
-    public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-        // 1. 使用 UserMapper 根据用户名从数据库查询用户实体
-        User user = userMapper.selectByUsername(username);
+    public UserDetails loadUserByUsername(String usernameOrEmail) throws UsernameNotFoundException {
+        // 1. 尝试根据传入的参数查找用户，优先判断是否为邮箱
+        User user = null;
+        if (usernameOrEmail != null && usernameOrEmail.contains("@")) {
+            // 如果包含@符号，认为是邮箱，调用selectByEmail
+            user = userMapper.selectByEmail(usernameOrEmail);
+        } else {
+            // 否则，认为是用户名，调用selectByUsername
+            user = userMapper.selectByUsername(usernameOrEmail);
+        }
 
-        // 2. 如果用户不存在，抛出 UsernameNotFoundException，Spring Security 会处理此异常
+        // 2. 如果用户不存在，抛出 UsernameNotFoundException
         if (user == null) {
-            throw new UsernameNotFoundException("User not found with username: " + username);
+            throw new UsernameNotFoundException("User not found with identifier: " + usernameOrEmail);
         }
 
         // 3. 如果用户存在，将其转换为 Spring Security 理解的 UserDetails 对象
-        //    - 第一个参数: 用户名
-        //    - 第二个参数: 数据库中存储的加密密码
-        //    - 第三个参数: 用户的权限列表 (GrantedAuthority)。暂时使用空列表，后续可扩展角色/权限。
         return new org.springframework.security.core.userdetails.User(
-                user.getUsername(),
+                user.getUsername(), // 使用数据库中的用户名作为 UserDetails 的 username
                 user.getPassword(),
                 Collections.emptyList() // 暂时没有角色/权限
-                // 如果有角色/权限，可以像这样构建:
-                // AuthorityUtils.commaSeparatedStringToAuthorityList("ROLE_USER,ROLE_ADMIN")
         );
     }
 } 
