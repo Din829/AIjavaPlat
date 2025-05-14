@@ -259,17 +259,17 @@
     4.  **新建Prompt页 (`/prompts/new`)**
     5.  **编辑Prompt页 (`/prompts/:id/edit`)**
 
-**阶段 7: 网页内容摘要 (Web Article Summarization)**
+**阶段 7: 网页内容摘要 (Web Article Summarization)** ⏳ (基础功能完成，待后端用户级API Key支持和全面测试)
 
 *   **目标:** 实现核心的网页摘要功能。
 *   **主要任务:**
-    1.  **摘要状态管理 (Pinia - `summarizeStore.ts`)**
-    2.  **摘要服务 (`summarizeService.ts`)**
-    3.  **摘要页面 (`/summarize` 或集成到Dashboard):**
-        *   URL输入。
-        *   (可选) Token选择。
-        *   结果展示与加载状态。
-        *   处理特定错误 (如用户Token无效)。
+    1.  **摘要状态管理 (Pinia - `summarizationStore.ts`)** ✅
+    2.  **摘要服务 (`summarizationService.ts`)** ✅
+    3.  **摘要页面 (`/summarize` 或集成到Dashboard):** ✅ (UI及基础调用逻辑完成)
+        *   URL输入。✅
+        *   (可选) Token选择。(⚠️ 待用户级别API Key后端支持后实现)
+        *   结果展示与加载状态。✅
+        *   处理特定错误 (如用户Token无效)。(⚠️ 依赖用户级别API Key支持，目前通过全局拦截器部分处理)
 
 **阶段 8: UI完善与组件化 (UI Polish & Componentization)**
 

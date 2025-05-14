@@ -67,7 +67,7 @@ import type { DropdownOption, MenuOption } from 'naive-ui'; // 单独导入类�
 import { ref } from 'vue';
 import { onMounted } from 'vue';
 import { NLayout, NLayoutHeader, NLayoutSider, NLayoutContent, NLayoutFooter, NMenu, NButton, NSpace, NIcon } from 'naive-ui';
-import { PersonCircleOutline as UserIcon, LogOutOutline as LogoutIcon, HomeOutline as DashboardIcon, KeyOutline as TokenIcon } from '@vicons/ionicons5'; // 引入图标
+import { AlbumsOutline, ReaderOutline } from '@vicons/ionicons5'; // 引入图标
 
 const router = useRouter();
 const authStore = useAuthStore();
@@ -95,24 +95,23 @@ const menuOptions: MenuOption[] = [
     ),
     key: 'tokens'
   },
-  // --- 修改 Prompt 管理导航项 ---
   {
     label: () => h(
       RouterLink,
-      { to: { name: 'Prompts' } }, // 链接到 Prompts 路由
-      { default: () => 'Prompt管理' }
+      { to: { name: 'Prompts' } },
+      { default: () => 'Prompt 管理' }
     ),
     key: 'prompts',
-    // disabled: true // 移除禁用状态
+    icon: () => h(NIcon, null, { default: () => h(AlbumsOutline) })
   },
   {
     label: () => h(
-      'span',
-      { style: 'color: #999;' }, // 未实现的功能显示为灰色
-      '网页摘要'
+      RouterLink,
+      { to: { name: 'Summarize' } },
+      { default: () => '网页摘要' }
     ),
     key: 'summarize',
-    disabled: true // 暂时禁用
+    icon: () => h(NIcon, null, { default: () => h(ReaderOutline) })
   }
 ];
 

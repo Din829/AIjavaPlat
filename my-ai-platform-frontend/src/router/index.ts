@@ -38,7 +38,13 @@ const routes: Array<RouteRecordRaw> = [
     path: '/prompts',
     name: 'Prompts',
     component: () => import('../views/PromptsPage.vue'),
-    meta: { requiresAuth: true }
+    meta: { requiresAuth: true, title: 'Prompt 管理' }
+  },
+  {
+    path: '/summarize',
+    name: 'Summarize',
+    component: () => import('../views/SummarizationPage.vue'),
+    meta: { requiresAuth: true, title: '网页摘要' }
   },
 
   // 重定向

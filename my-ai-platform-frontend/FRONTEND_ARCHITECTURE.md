@@ -29,15 +29,21 @@ src/
 │   ├── apiClient.ts   # Axios实例配置，包含拦截器和错误处理
 │   ├── authService.ts # 认证相关API (登录、注册)
 │   ├── messageService.ts # 全局消息提示服务
+│   ├── promptService.ts # Prompt管理相关API
+│   ├── summarizationService.ts # 网页摘要相关API
 │   └── tokenService.ts   # API Token管理服务
 ├── stores/            # Pinia状态管理模块
 │   ├── authStore.ts   # 用户认证状态管理
+│   ├── promptStore.ts  # Prompt状态管理
+│   ├── summarizationStore.ts # 网页摘要状态管理
 │   └── tokenStore.ts  # API Token状态管理
 ├── utils/             # 工具函数
 ├── views/             # 页面级组件
 │   ├── DashboardPage.vue # 仪表盘页面
 │   ├── LoginPage.vue     # 登录页面
 │   ├── RegisterPage.vue  # 注册页面
+│   ├── PromptsPage.vue   # Prompt管理页面
+│   ├── SummarizationPage.vue # 网页摘要页面
 │   └── TokensPage.vue    # API Token管理页面
 ├── App.vue            # Vue应用的根组件
 ├── main.ts            # 应用主入口文件 (初始化Vue, Pinia, Router, Naive UI等)
@@ -56,7 +62,7 @@ src/
     -   支持编程式导航和 `<router-link>` 组件。
 
 ### 4.2. 状态管理 (`pinia`)
--   **配置**: `src/stores/` 目录下按功能模块组织各个store (例如 `authStore.ts`)。
+-   **配置**: `src/stores/` 目录下按功能模块组织各个store (例如 `authStore.ts`, `tokenStore.ts`, `promptStore.ts`, `summarizationStore.ts`)。
 -   **特性**:
     -   集中管理应用的全局状态，如用户认证信息、Token、用户信息等。
     -   提供 `state`, `getters`, `actions` 来定义和操作状态。
@@ -82,6 +88,8 @@ src/
     -   `apiClient.ts`: 全局Axios实例，配置了基础URL、请求/响应拦截器，实现了JWT Token自动附加和统一错误处理。
     -   `authService.ts`: 封装认证相关API (登录、注册)，提供类型安全的接口。
     -   `tokenService.ts`: 封装API Token管理相关API，提供Token值掩码处理等辅助功能。
+    -   `promptService.ts`: 封装 Prompt 管理相关API (获取列表、创建、编辑、删除)。
+    -   `summarizationService.ts`: 封装网页内容摘要相关的API请求。
     -   `messageService.ts`: 全局消息提示服务，集成Naive UI的消息API。
 -   **特点**:
     -   所有服务都提供清晰、类型安全的函数供上层 (如Pinia stores或组件) 调用。
@@ -100,18 +108,24 @@ src/
 -   **`src/App.vue`**: Vue应用的根组件，承载全局布局和`<router-view>`。
 -   **`src/router/index.ts`**: 定义所有路由规则，包括认证保护和路由元信息。
 -   **`src/layouts/AppLayout.vue`**: 主应用布局，包含导航菜单、页眉和页脚。
--   **`src/stores/authStore.ts`**: 管理用户认证相关的状态，包括登录、注册和登出逻辑。
--   **`src/stores/tokenStore.ts`**: 管理API Token相关的状态，包括获取、创建和删除Token。
--   **`src/services/apiClient.ts`**: 全局Axios实例，配置了拦截器和错误处理。
--   **`src/services/authService.ts`**: 封装认证相关的API请求。
--   **`src/services/tokenService.ts`**: 封装API Token管理相关的API请求。
--   **`src/services/messageService.ts`**: 全局消息提示服务。
+-   **`src/stores/authStore.ts`**: 管理用户认证相关的状态 (登录、注册、登出、用户信息)。
+-   **`src/stores/tokenStore.ts`**: 管理API Token相关的状态 (获取、创建、删除Token)。
+-   **`src/stores/promptStore.ts`**: 管理 Prompt 相关的状态 (获取列表、创建、编辑、删除 Prompt)。
+-   **`src/stores/summarizationStore.ts`**: 管理网页摘要相关的状态 (获取摘要、处理加载和错误状态)。
+-   **`src/services/apiClient.ts`**: 全局Axios实例，配置基础URL、拦截器和统一错误处理。
+-   **`src/services/authService.ts`**: 封装认证相关的API请求 (登录、注册、获取当前用户)。
+-   **`src/services/tokenService.ts`**: 封装API Token管理相关的API请求 (获取、创建、删除Token)。
+-   **`src/services/promptService.ts`**: 封装 Prompt 管理相关的API请求 (CRUD)。
+-   **`src/services/summarizationService.ts`**: 封装网页内容摘要相关的API请求。
+-   **`src/services/messageService.ts`**: 全局消息提示服务，集成 Naive UI。
 -   **`src/views/LoginPage.vue`**: 用户登录页面。
 -   **`src/views/RegisterPage.vue`**: 用户注册页面。
 -   **`src/views/DashboardPage.vue`**: 仪表盘页面。
 -   **`src/views/TokensPage.vue`**: API Token管理页面。
--   **`eslint.config.js`**: ESLint配置文件，用于代码规范检查。
--   **`.prettierrc.json`**: Prettier配置文件，用于代码格式化。
+-   **`src/views/PromptsPage.vue`**: Prompt 管理页面，提供对用户 Prompt 的增删改查功能。
+-   **`src/views/SummarizationPage.vue`**: 网页内容摘要页面，允许用户输入URL并获取内容摘要。
+-   **`eslint.config.js`**: ESLint 配置文件。
+-   **`.prettierrc.json`**: Prettier 配置文件。
 -   **`tsconfig.json` / `tsconfig.app.json` / `tsconfig.node.json`**: TypeScript配置文件。
 -   **`package.json`**: 项目依赖和脚本配置。
 
@@ -148,19 +162,31 @@ src/
    - Token删除
    - Token值掩码处理
 
-4. **UI组件**:
+4. **Prompt 管理**:
+   - Prompt列表展示
+   - Prompt创建
+   - Prompt编辑
+   - Prompt删除
+
+5. **UI组件**:
    - 应用布局 (包含导航菜单)
    - 登录/注册表单
    - Token管理界面
    - 全局消息提示
 
-5. **安全与错误处理**:
+6. **安全与错误处理**:
    - 路由认证保护
-   - API请求错误处理
+   - API请求错误处理 (包括超时设置调整)
    - 表单验证
    - 详细的日志记录
 
-后续开发计划包括Prompt管理、网页内容摘要等功能，详见 `FRONTEND_PLAN.md`。
+7. **网页内容摘要** (基础功能):
+   - 摘要服务层 (`summarizationService.ts`)
+   - 摘要状态管理 (`summarizationStore.ts`)
+   - 摘要页面 (`SummarizationPage.vue`) UI与基础调用逻辑
+   - Axios客户端超时已调整为90秒
+
+后续开发计划包括完善网页内容摘要功能 (特别是用户级别API Key的支持与测试)等，详见 `FRONTEND_PLAN.md`。
 
 ---
 本文档将随着开发的进行而更新。

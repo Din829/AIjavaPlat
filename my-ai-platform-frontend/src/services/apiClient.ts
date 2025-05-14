@@ -3,9 +3,9 @@ import { useAuthStore } from '../stores/authStore'; // 用于获取token和执�
 import { message } from './messageService'; // 导入消息服务
 // import router from '../router'; // 避免直接导入router以防循环依赖，登出后的跳转由authStore.logout的调用方处理
 
-const apiClient: AxiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080',
-  timeout: 10000, // 10秒超时
+const apiClient = axios.create({
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api',
+  timeout: 90000, // 设置全局超时为 90000 毫秒 (90 秒)
   headers: {
     'Content-Type': 'application/json',
   },
