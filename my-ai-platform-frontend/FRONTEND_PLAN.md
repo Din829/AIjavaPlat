@@ -249,7 +249,7 @@
         *   在AppLayout中添加导航菜单
         *   添加Token管理页面的链接
 
-**阶段 6: Prompt 管理 (Prompt Management)**
+**阶段 6: Prompt 管理 (Prompt Management)** ✅
 
 *   **目标:** 实现用户对常用Prompt的CRUD操作。
 *   **主要任务:**
