@@ -35,10 +35,24 @@ export const useSummarizationStore = defineStore('summarization', {
       try {
         const requestData: SummarizationRequestData = { url };
         const responseData: SummarizationResponseData = await summarizeUrl(requestData);
-        this.summaryResult = responseData.summary;
+        
+        // 检查后端是否返回了"成功但内容为空/无法提取"的特定提示
+        if (responseData.summary === "无法提取网页内容或内容为空。") {
+          this.error = responseData.summary; // 将此消息视为错误
+          this.summaryResult = null; // 确保摘要结果为空
+        } else {
+          this.summaryResult = responseData.summary; // 正常的摘要结果
+        }
       } catch (err: any) {
         // summarizeUrl服务中已经处理并抛出了一个带有message的Error对象
-        this.error = err.message || '无法生成摘要，请检查URL或稍后再试。';
+        let displayError = err.message || '无法生成摘要，请检查URL或稍后再试。';
+        
+        // 检查是否是由于API Key相关问题导致的底层错误
+        if (err.message && (err.message.includes('extracting response') || err.message.includes('API key') || err.message.includes('Unauthorized'))) {
+          displayError = 'AI服务调用失败。请检查您的API Token是否正确、有效，并确保账户余额充足。如果问题持续，请尝试更新Token或联系技术支持。';
+        }
+        
+        this.error = displayError;
         this.summaryResult = null; // 确保出错时结果为空
         console.error('Error in fetchSummary action:', err);
       } finally {

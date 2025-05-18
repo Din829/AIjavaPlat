@@ -21,13 +21,16 @@
 **总体方向：**
 构建一个强大的后端服务，用于处理用户上传的多种格式文档（PDF、图片、Office文档等）。核心能力包括高精度的OCR、文档结构解析（如布局、表格、图片提取），并能以结构化方式（如JSON、Markdown）输出处理结果。此服务将作为未来高级AI功能（如文档问答、智能摘要增强、信息提取）的基础。
 
-**关键技术实现路径（方案A）、架构集成与API设计：**
+**关键技术实现路径（方案A，根据实际情况调整）、架构集成与API设计：**
 
 1.  **核心文档处理（Python微服务 - Docling主导，Gemini辅助）：**
     *   **主要职责：**
         *   **Docling进行深度文档解析：** 利用Docling内置的解析器、布局分析模型（如DocLayNet）、表格识别模型（如TableFormer）及可配置的OCR引擎（如Tesseract, EasyOCR），对上传的文档（PDF、图片、Office文档等）进行全面的结构化解析。目标是生成一个包含详细页面布局、文本块、段落、标题、列表、表格、图片等元素及其属性（如坐标、类型）的`DoclingDocument`对象。
         *   **（可选）Gemini进行靶向增强：** 对于Docling初步处理后仍存在识别困难的特定图像区域（例如，低质量扫描件中的图片文字、复杂图表内的文字），或需要对特定内容块进行高级理解/转换时，Python微服务将负责调用Gemini API (或其他顶级VLM) 对这些*特定元素*进行处理。
-        *   **输出定义：** 微服务的核心输出是**一份详尽的、结构化的JSON文档**，该JSON由`DoclingDocument`对象序列化而来，并融合了Gemini（如果调用）的增强结果。其目标结构草案如下：
+        *   **核心输出与实现策略调整：**
+            *   **输出目标：** 微服务的核心输出仍然是**一份详尽的、结构化的JSON文档**，该JSON目标结构如下文草案所示。
+            *   **实现挑战与当前策略：** 在集成 `docling` 库 (v2.32.0) 的过程中，遇到了其核心数据模型（如代表页面和元素的类）无法按预期方式直接导入的严重问题 (详情参见 `0518问题.txt`)。因此，Python微服务 (`ocr_service.py`) 将采用"黑盒"处理方式：仅稳定导入 `docling.document_converter.DocumentConverter` 和 `docling_core.types.DoclingDocument` (作为内部文档对象的核心类型)。然后，通过运行时属性探查（如 `type()`, `dir()`, `getattr()`, `hasattr()`）和防御性编程，来遍历和解析 `DoclingDocument` 对象内部的页面和元素结构，以填充预定义的JSON。这意味着JSON中各字段的详细程度和准确性将依赖于运行时的调试和对 `DoclingDocument` 实际内部结构的逐步分析与迭代优化。
+            *   **JSON结构草案 (作为输出目标)：**
             ```json
             {
               "document_metadata": {
@@ -122,7 +125,7 @@
             }
             ```
     *   **技术调研与实现要点：**
-        *   深入研究`DoclingDocument`对象的结构，以及如何高效、完整地将其序列化为我们期望的JSON格式（探索其内置JSON导出或自定义序列化方案）。
+        *   深入研究`DoclingDocument`对象的实际内部结构（通过运行时调试），以及如何通过`getattr()`等安全方式提取属性，并将其序列化为我们期望的JSON格式。
         *   确定调用Gemini API的最佳实践（如使用官方SDK、`litellm`），包括错误处理和成本效益考量。
         *   Python微服务框架选型（如FastAPI, Flask）及API接口设计。
         *   云部署方案调研与决策（如Docker + Serverless容器服务Cloud Run/Fargate，或托管K8s）。
@@ -130,7 +133,7 @@
 2.  **Java后端集成 (`aiplatjava` 项目内)：**
     *   **新增核心组件：**
         *   `OcrController`: 提供 `/api/ocr/...` RESTful API 端点，处理前端的文件上传、任务状态查询、结果获取等请求。
-        *   `OcrService`: 实现核心业务逻辑，包括调用Python OCR微服务、管理异步任务（如果采用）、处理和转换Python微服务返回的JSON数据。
+        *   `OcrService`: 实现核心业务逻辑，包括调用Python OCR微服务、管理异步任务（如果采用）、处理和转换Python微服务返回的JSON数据（需注意该JSON的详细程度和准确性是逐步完善的）。
         *   DTOs: `OcrUploadRequestDto`, `OcrResponseDto` (其核心荷载为Python微服务返回的结构化JSON), `OcrTaskStatusDto`。
     *   **与Python微服务的通信：**
         *   **主要协议：** HTTP/HTTPS。

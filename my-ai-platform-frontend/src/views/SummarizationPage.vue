@@ -33,6 +33,16 @@
         <n-alert type="error" :show-icon="false">
           {{ summarizationStore.error }}
         </n-alert>
+        <n-button 
+          v-if="isApiTokenError"
+          type="primary"
+          ghost
+          size="small"
+          style="margin-top: 10px;"
+          @click="goToTokenPage"
+        >
+          前往配置Token
+        </n-button>
       </n-card>
 
       <n-card v-if="summarizationStore.hasSummaryResult && !summarizationStore.error" title="摘要结果" class="results-card">
@@ -55,26 +65,29 @@
 </template>
 
 <script setup lang="ts">
+// @ts-nocheck 
 import { ref, computed } from 'vue';
 import {
-  NPageHeader,
-  NCard,
-  NForm,
-  NFormItem,
-  NInput,
-  NButton,
-  NSpace,
-  NSpin,
-  NAlert,
-  NBlockquote,
-  NEmpty,
-  NP,
-  useMessage // 如果需要更细致的消息提示，可以引入
+  NPageHeader, // 全局注册，无需显式导入
+  NCard, // 全局注册
+  NForm, // 全局注册
+  NFormItem, // 全局注册
+  NInput, // 全局注册
+  NButton, // 全局注册
+  NSpace, // 全局注册
+  NSpin, // 全局注册
+  NAlert, // 全局注册
+  NBlockquote, // 全局注册
+  NEmpty, // 全局注册
+  NP, // 全局注册
+  useMessage // hooks 需要导入
 } from 'naive-ui';
 import { useSummarizationStore } from '../stores/summarizationStore';
+import { useRouter } from 'vue-router'; // 导入 useRouter
 
 const summarizationStore = useSummarizationStore();
 const message = useMessage(); // 可选，用于更细致的提示
+const router = useRouter(); // 获取 router 实例
 
 const inputUrl = ref('');
 
@@ -92,10 +105,11 @@ const handleSummarize = async () => {
   }
 
   await summarizationStore.fetchSummary(inputUrl.value);
-  // 可以在这里根据 store.error 的状态给出成功或失败的 message 提示
+  
   if (summarizationStore.error) {
     // 错误已经在store中设置，并在UI上通过n-alert显示
-    // message.error(`摘要失败: ${summarizationStore.error}`);
+    // 现在，我们也需要在这里通过全局 message service 显示这个友好的错误信息
+    message.error(summarizationStore.error); // 恢复调用
   } else if (summarizationStore.hasSummaryResult) {
     message.success('摘要生成成功！');
   }
@@ -105,6 +119,23 @@ const handleReset = () => {
   summarizationStore.resetState();
   inputUrl.value = '';
   message.info('输入和结果已重置。');
+};
+
+// 计算属性，判断错误消息是否与API Token相关
+const isApiTokenError = computed(() => {
+  if (summarizationStore.error) {
+    // 检查新的通用错误提示，或者旧的特定关键词（为了兼容性，虽然可能不再需要）
+    return summarizationStore.error.includes('API Token') || // 检查 "API Token" 这个词组
+           summarizationStore.error.includes('Token是否正确') || // 更具体一点
+           summarizationStore.error.includes('API密钥') || 
+           summarizationStore.error.includes('OpenAI密钥');
+  }
+  return false;
+});
+
+// 前往Token配置页面的方法
+const goToTokenPage = () => {
+  router.push({ name: 'Tokens' });
 };
 
 // 将摘要文本中的换行符转换成 <br> 标签，以便在 v-html 中正确显示换行
