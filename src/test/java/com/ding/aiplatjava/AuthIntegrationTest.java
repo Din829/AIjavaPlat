@@ -88,7 +88,7 @@ public class AuthIntegrationTest {
 
         // ---- 3. 使用新凭证登录 ----
         LoginRequestDto loginRequest = new LoginRequestDto();
-        loginRequest.setUsername(username);
+        loginRequest.setUsernameOrEmail(username);
         loginRequest.setPassword(rawPassword);
 
         MvcResult loginResult = mockMvc.perform(post("/api/auth/login")
@@ -118,7 +118,7 @@ public class AuthIntegrationTest {
     void login_Failure_InvalidCredentials() throws Exception {
         // ---- 场景 1.2.1: 用户名不存在 ----
         LoginRequestDto loginRequestNonExistentUser = new LoginRequestDto();
-        loginRequestNonExistentUser.setUsername("nonexistentuser" + System.currentTimeMillis());
+        loginRequestNonExistentUser.setUsernameOrEmail("nonexistentuser" + System.currentTimeMillis());
         loginRequestNonExistentUser.setPassword("anypassword");
 
         mockMvc.perform(post("/api/auth/login")
@@ -148,7 +148,7 @@ public class AuthIntegrationTest {
 
         // 使用正确用户名和错误密码登录
         LoginRequestDto loginRequestWrongPassword = new LoginRequestDto();
-        loginRequestWrongPassword.setUsername(username);
+        loginRequestWrongPassword.setUsernameOrEmail(username);
         loginRequestWrongPassword.setPassword(wrongPassword);
 
         mockMvc.perform(post("/api/auth/login")
@@ -229,7 +229,7 @@ public class AuthIntegrationTest {
                 .andExpect(status().isCreated());
 
         LoginRequestDto loginRequest = new LoginRequestDto();
-        loginRequest.setUsername(username);
+        loginRequest.setUsernameOrEmail(username);
         loginRequest.setPassword(rawPassword);
 
         MvcResult loginResult = mockMvc.perform(post("/api/auth/login")
@@ -272,4 +272,4 @@ public class AuthIntegrationTest {
                 .andExpect(status().isUnauthorized()); // 验证状态码 401 Unauthorized
     }
 
-} 
+}

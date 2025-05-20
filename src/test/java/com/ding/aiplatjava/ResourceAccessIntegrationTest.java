@@ -87,7 +87,7 @@ public class ResourceAccessIntegrationTest {
      */
     private String loginUserAndGetToken(String username, String password) throws Exception {
         LoginRequestDto loginRequest = new LoginRequestDto();
-        loginRequest.setUsername(username);
+        loginRequest.setUsernameOrEmail(username);
         loginRequest.setPassword(password);
 
         MvcResult loginResult = mockMvc.perform(post("/api/auth/login")
@@ -123,7 +123,7 @@ public class ResourceAccessIntegrationTest {
                 .andExpect(status().isCreated()) // 假设Token创建成功返回201 Created
                 .andExpect(jsonPath("$.id").exists())
                 .andReturn();
-        
+
         ApiTokenDto createdToken = objectMapper.readValue(createResult.getResponse().getContentAsString(), ApiTokenDto.class);
         return createdToken.getId();
     }
@@ -152,7 +152,7 @@ public class ResourceAccessIntegrationTest {
                 .andExpect(status().isCreated()) // 假设Prompt创建成功返回201 Created
                 .andExpect(jsonPath("$.id").exists())
                 .andReturn();
-        
+
         Prompt createdPrompt = objectMapper.readValue(createResult.getResponse().getContentAsString(), Prompt.class);
         return createdPrompt.getId();
     }
@@ -272,4 +272,4 @@ public class ResourceAccessIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk());
     }
-} 
+}

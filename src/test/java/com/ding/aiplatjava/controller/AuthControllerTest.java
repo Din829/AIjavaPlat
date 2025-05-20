@@ -70,7 +70,7 @@ class AuthControllerTest {
     void login_Success() throws Exception {
         // Arrange: 准备阶段，设置测试数据和模拟对象的行为
         LoginRequestDto loginRequest = new LoginRequestDto(); // 创建登录请求 DTO
-        loginRequest.setUsername("testuser"); // 设置用户名
+        loginRequest.setUsernameOrEmail("testuser"); // 设置用户名或邮箱
         loginRequest.setPassword("password"); // 设置密码
 
         // 创建一个模拟的 UserDetails 对象，代表认证成功后的用户信息
@@ -104,7 +104,7 @@ class AuthControllerTest {
     void login_Failure_BadCredentials() throws Exception {
         // Arrange: 准备登录请求数据
         LoginRequestDto loginRequest = new LoginRequestDto();
-        loginRequest.setUsername("testuser");
+        loginRequest.setUsernameOrEmail("testuser");
         loginRequest.setPassword("wrongpassword"); // 使用错误的密码
 
         // 配置模拟的 authenticationManager：当调用 authenticate 方法时，抛出 BadCredentialsException 异常，模拟认证失败
@@ -194,4 +194,4 @@ class AuthControllerTest {
                         .content(objectMapper.writeValueAsString(registerRequest))) // 设置请求体
                 .andExpect(status().isBadRequest()); // 断言：期望 HTTP 响应状态码为 400 Bad Request (由 Spring Validation 自动处理并被 GlobalExceptionHandler 捕获)
     }
-} 
+}

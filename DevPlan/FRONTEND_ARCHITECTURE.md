@@ -29,11 +29,13 @@ src/
 │   ├── apiClient.ts   # Axios实例配置，包含拦截器和错误处理
 │   ├── authService.ts # 认证相关API (登录、注册)
 │   ├── messageService.ts # 全局消息提示服务
+│   ├── ocrService.ts # OCR文档处理相关API
 │   ├── promptService.ts # Prompt管理相关API
 │   ├── summarizationService.ts # 网页摘要相关API
 │   └── tokenService.ts   # API Token管理服务
 ├── stores/            # Pinia状态管理模块
 │   ├── authStore.ts   # 用户认证状态管理
+│   ├── ocrStore.ts    # OCR文档处理状态管理
 │   ├── promptStore.ts  # Prompt状态管理
 │   ├── summarizationStore.ts # 网页摘要状态管理
 │   └── tokenStore.ts  # API Token状态管理
@@ -41,6 +43,7 @@ src/
 ├── views/             # 页面级组件
 │   ├── DashboardPage.vue # 仪表盘页面
 │   ├── LoginPage.vue     # 登录页面
+│   ├── OcrPage.vue       # OCR文档处理页面
 │   ├── RegisterPage.vue  # 注册页面
 │   ├── PromptsPage.vue   # Prompt管理页面
 │   ├── SummarizationPage.vue # 网页摘要页面
@@ -109,6 +112,7 @@ src/
 -   **`src/router/index.ts`**: 定义所有路由规则，包括认证保护和路由元信息。
 -   **`src/layouts/AppLayout.vue`**: 主应用布局，包含导航菜单、页眉和页脚。
 -   **`src/stores/authStore.ts`**: 管理用户认证相关的状态 (登录、注册、登出、用户信息)。
+-   **`src/stores/ocrStore.ts`**: 管理OCR文档处理相关的状态 (上传文件、获取任务状态、获取处理结果)。
 -   **`src/stores/tokenStore.ts`**: 管理API Token相关的状态 (获取、创建、删除Token)。
 -   **`src/stores/promptStore.ts`**: 管理 Prompt 相关的状态 (获取列表、创建、编辑、删除 Prompt)。
 -   **`src/stores/summarizationStore.ts`**: 管理网页摘要相关的状态 (获取摘要、处理加载和错误状态)。
@@ -117,6 +121,7 @@ src/
 -   **`src/services/tokenService.ts`**: 封装API Token管理相关的API请求 (获取、创建、删除Token)。
 -   **`src/services/promptService.ts`**: 封装 Prompt 管理相关的API请求 (CRUD)。
 -   **`src/services/summarizationService.ts`**: 封装网页内容摘要相关的API请求。
+-   **`src/services/ocrService.ts`**: 封装OCR文档处理相关的API请求 (上传文件、获取任务状态、获取处理结果)。
 -   **`src/services/messageService.ts`**: 全局消息提示服务，集成 Naive UI。
 -   **`src/views/LoginPage.vue`**: 用户登录页面。
 -   **`src/views/RegisterPage.vue`**: 用户注册页面。
@@ -124,6 +129,7 @@ src/
 -   **`src/views/TokensPage.vue`**: API Token管理页面。
 -   **`src/views/PromptsPage.vue`**: Prompt 管理页面，提供对用户 Prompt 的增删改查功能。
 -   **`src/views/SummarizationPage.vue`**: 网页内容摘要页面，允许用户输入URL并获取内容摘要。
+-   **`src/views/OcrPage.vue`**: OCR文档处理页面，允许用户上传文档并获取OCR处理结果。
 -   **`eslint.config.js`**: ESLint 配置文件。
 -   **`.prettierrc.json`**: Prettier 配置文件。
 -   **`tsconfig.json` / `tsconfig.app.json` / `tsconfig.node.json`**: TypeScript配置文件。
@@ -186,7 +192,20 @@ src/
    - 摘要页面 (`SummarizationPage.vue`) UI与基础调用逻辑
    - Axios客户端超时已调整为90秒
 
-后续开发计划包括完善网页内容摘要功能 (特别是用户级别API Key的支持与测试)等，详见 `FRONTEND_PLAN.md`。
+8. **OCR文档处理** (已完成):
+   - 后端服务已完成，包括文件上传、异步处理和结果管理
+   - 与Python OCR微服务的集成已完成
+   - 前端服务层已实现，包括：
+     - `ocrService.ts`: 封装OCR相关API请求
+     - `ocrStore.ts`: 管理OCR状态和业务逻辑
+     - 类型定义: 在`types/ocr.ts`中定义了OCR相关的类型
+   - 前端UI组件已实现，包括：
+     - 文件上传组件，支持拖放和文件选择
+     - OCR处理选项配置（语言、处理方式等）
+     - 处理状态显示和进度反馈
+     - 结果展示界面，包括文本内容、表格和Gemini分析结果的可视化展示
+
+后续开发计划包括优化OCR处理性能，增强表格结构识别功能，实现实时进度反馈机制等，详见 `OCR服务优化点.md`。
 
 ---
 本文档将随着开发的进行而更新。

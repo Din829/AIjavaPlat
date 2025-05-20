@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ding.aiplatjava.mapper.OcrTaskMapper">
+    
+    <!-- 结果映射 -->
+    <resultMap id="OcrTaskResultMap" type="com.ding.aiplatjava.entity.OcrTask">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="taskId" column="task_id"/>
+        <result property="status" column="status"/>
+        <result property="originalFilename" column="original_filename"/>
+        <result property="storedFilename" column="stored_filename"/>
+        <result property="resultJson" column="result_json"/>
+        <result property="errorMessage" column="error_message"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+        <result property="completedAt" column="completed_at"/>
+    </resultMap>
+    
+    <!-- 插入新的OCR任务 -->
+    <insert id="insert" parameterType="com.ding.aiplatjava.entity.OcrTask" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ocr_tasks (
+            user_id, task_id, status, original_filename, stored_filename, 
+            result_json, error_message, created_at, updated_at, completed_at
+        ) VALUES (
+            #{userId}, #{taskId}, #{status}, #{originalFilename}, #{storedFilename}, 
+            #{resultJson}, #{errorMessage}, #{createdAt}, #{updatedAt}, #{completedAt}
+        )
+    </insert>
+    
+    <!-- 根据ID查询OCR任务 -->
+    <select id="selectById" resultMap="OcrTaskResultMap">
+        SELECT * FROM ocr_tasks WHERE id = #{id}
+    </select>
+    
+    <!-- 根据任务ID（UUID）查询OCR任务 -->
+    <select id="selectByTaskId" resultMap="OcrTaskResultMap">
+        SELECT * FROM ocr_tasks WHERE task_id = #{taskId}
+    </select>
+    
+    <!-- 根据用户ID查询该用户的所有OCR任务 -->
+    <select id="selectByUserId" resultMap="OcrTaskResultMap">
+        SELECT * FROM ocr_tasks WHERE user_id = #{userId} ORDER BY created_at DESC
+    </select>
+    
+    <!-- 更新任务状态 -->
+    <update id="updateStatus">
+        UPDATE ocr_tasks SET status = #{status}, updated_at = NOW() WHERE task_id = #{taskId}
+    </update>
+    
+    <!-- 更新任务结果 -->
+    <update id="updateResult">
+        UPDATE ocr_tasks 
+        SET result_json = #{resultJson}, 
+            status = 'COMPLETED', 
+            updated_at = NOW(), 
+            completed_at = #{completedAt} 
+        WHERE task_id = #{taskId}
+    </update>
+    
+    <!-- 更新任务错误信息 -->
+    <update id="updateError">
+        UPDATE ocr_tasks 
+        SET error_message = #{errorMessage}, 
+            status = 'FAILED', 
+            updated_at = NOW() 
+        WHERE task_id = #{taskId}
+    </update>
+    
+</mapper>

@@ -52,7 +52,8 @@ AIplatJava/
 │   │       ├── db/                   # 数据库脚本 (如 schema.sql)
 │   │       ├── mapper/               # MyBatis XML 映射文件
 │   │       │   ├── PromptMapper.xml
-│   │       │   └── ApiTokenMapper.xml
+│   │       │   ├── ApiTokenMapper.xml
+│   │       │   └── OcrTaskMapper.xml
 │   │       ├── static/               # 静态资源 (如HTML, CSS, JS) (计划中)
 │   │       ├── templates/            # 服务端模板 (如Thymeleaf) (计划中)
 │   │       └── application.properties # Spring Boot 应用配置文件
@@ -178,6 +179,40 @@ AIplatJava/
 - `dto.SummarizationRequestDto`: 摘要请求DTO (包含 URL)
 - `dto.SummarizationResponseDto`: 摘要响应DTO (包含摘要结果)
 
+### 5. OCR文档处理 (OCR Document Processing)
+
+**职责**:
+- 接收用户上传的文档
+- 异步处理OCR任务
+- 与Python OCR微服务通信
+- 管理OCR任务状态和结果
+- 返回处理结果
+
+**主要组件**:
+- `entity.OcrTask`: OCR任务实体类
+- `mapper.OcrTaskMapper`: OCR任务数据访问接口
+  - `OcrTask selectByTaskId(String taskId)`: 根据任务ID查询OCR任务
+  - `int insert(OcrTask ocrTask)`: 插入新的OCR任务
+  - `int updateStatus(String taskId, String status)`: 更新OCR任务状态
+  - `int updateResult(String taskId, String result, LocalDateTime completedAt)`: 更新OCR任务结果
+  - `int updateError(String taskId, String errorMessage)`: 更新OCR任务错误信息
+- `service.OcrService`: OCR服务接口
+  - `OcrResponseDto uploadAndProcess(MultipartFile file, OcrUploadRequestDto requestDto, Long userId)`: 上传并处理文档
+  - `CompletableFuture<OcrResponseDto> processOcrTaskAsync(String taskId, String filePath, Long userId, OcrUploadRequestDto requestDto)`: 异步处理OCR任务
+  - `OcrResponseDto getTaskStatus(String taskId)`: 获取OCR任务状态
+  - `OcrResponseDto getTaskResult(String taskId)`: 获取OCR任务结果
+- `service.impl.OcrServiceImpl`: OCR服务实现
+- `service.OcrProcessingService`: OCR处理服务接口
+  - `CompletableFuture<Map<String, Object>> processFile(Path filePath, Map<String, Object> options)`: 处理文件
+- `service.impl.OcrProcessingServiceImpl`: OCR处理服务实现 (与Python微服务通信)
+- `controller.OcrController`: OCR相关API
+  - `ResponseEntity<OcrResponseDto> uploadFile(MultipartFile file, OcrUploadRequestDto requestDto)`: 上传文件并处理
+  - `ResponseEntity<OcrResponseDto> getTaskStatus(String taskId)`: 获取任务状态
+  - `ResponseEntity<OcrResponseDto> getTaskResult(String taskId)`: 获取任务结果
+- `dto.OcrUploadRequestDto`: OCR上传请求DTO
+- `dto.OcrResponseDto`: OCR响应DTO
+- `dto.OcrTaskStatusDto`: OCR任务状态DTO
+
 ## 数据库设计 (初步)
 
 ### 用户表 (users)
@@ -204,6 +239,17 @@ AIplatJava/
 - category: varchar(50)
 - created_at: datetime
 - updated_at: datetime
+
+### OCR任务表 (ocr_tasks)
+- task_id: varchar(36) (PK, UUID)
+- user_id: bigint (FK -> users.id)
+- file_name: varchar(255)
+- file_size: bigint
+- status: varchar(20) (如 "PENDING", "PROCESSING", "COMPLETED", "FAILED")
+- result: text (JSON格式，存储OCR处理结果)
+- error_message: text (存储错误信息，如果有)
+- created_at: datetime
+- completed_at: datetime
 
 ## 安全考虑
 

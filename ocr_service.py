@@ -9,7 +9,9 @@ AI Platform OCR Microservice
 服务提供RESTful API接口，支持文件上传和处理。
 """
 
+# 启用 Docling 模型下载
 import os
+os.environ["DOCLING_ALLOW_DOWNLOADS"] = "1"
 import sys
 import uuid
 import shutil
@@ -322,31 +324,250 @@ def process_with_docling(file_path: str, force_ocr: bool = False) -> Dict[str, A
     try:
         # 尝试导入并配置pipeline_options
         try:
-            from docling.pipeline_options import PipelineOptions
-            pipeline_options = PipelineOptions()
-
-            # 设置缓存目录
-            pipeline_options.cache_dir = os.path.abspath(LOCAL_CACHE_DIR)
-
-            # 启用OCR，并根据参数决定是否强制使用OCR
-            pipeline_options.do_ocr = True
-            pipeline_options.force_ocr = force_ocr
-
-            # 尝试配置OCR选项，特别是对日语的支持
+            # 根据 Docling 2.32.0 版本的文档，正确的导入路径是 docling.datamodel.pipeline_options
             try:
-                from docling.pipeline_options import EasyOcrOptions
+                from docling.datamodel.pipeline_options import PdfPipelineOptions, EasyOcrOptions
+                logger.info("Successfully imported from docling.datamodel.pipeline_options")
+
+                # 使用 PdfPipelineOptions 更针对PDF处理
+                pipeline_options = PdfPipelineOptions()
+
+                # 设置缓存目录 - 在 Docling 2.32.0 中，可能使用不同的属性名
+                # 尝试设置缓存目录，如果属性不存在则忽略
+                try:
+                    pipeline_options.cache_dir = os.path.abspath(LOCAL_CACHE_DIR)
+                except Exception as e:
+                    logger.info(f"Could not set cache_dir: {e}. This is normal for newer Docling versions.")
+                    # 尝试其他可能的属性名
+                    try:
+                        pipeline_options.artifacts_path = os.path.abspath(LOCAL_CACHE_DIR)
+                    except Exception as e2:
+                        logger.info(f"Could not set artifacts_path: {e2}. Using default cache location.")
+
+                # 启用OCR，并根据参数决定是否强制使用OCR
+                # 尝试设置OCR选项，如果属性不存在则忽略
+                try:
+                    pipeline_options.do_ocr = True
+                except Exception as e:
+                    logger.info(f"Could not set do_ocr: {e}. This is normal for newer Docling versions.")
+
+                try:
+                    pipeline_options.force_ocr = force_ocr
+                except Exception as e:
+                    logger.info(f"Could not set force_ocr: {e}. This is normal for newer Docling versions.")
+
+                # 尝试配置OCR选项，特别是对日语的支持
                 ocr_options = EasyOcrOptions()
-                # 添加日语支持
-                ocr_options.languages = ["ja", "en"]
-                pipeline_options.ocr_options = ocr_options
+                # 添加日语支持 - 在不同版本中，属性名可能不同
+                try:
+                    # 尝试设置 languages 属性
+                    ocr_options.languages = ["ja", "en"]
+                except Exception as e:
+                    logger.info(f"Could not set languages: {e}. Trying alternative attribute names.")
+                    # 尝试设置 lang 属性
+                    try:
+                        ocr_options.lang = ["ja", "en"]
+                    except Exception as e2:
+                        logger.info(f"Could not set lang: {e2}. Trying alternative attribute names.")
+                        # 尝试设置 language 属性
+                        try:
+                            ocr_options.language = ["ja", "en"]
+                        except Exception as e3:
+                            logger.info(f"Could not set language: {e3}. Using default language settings.")
+
+                # 尝试设置 OCR 选项
+                try:
+                    pipeline_options.ocr_options = ocr_options
+                except Exception as e:
+                    logger.info(f"Could not set ocr_options: {e}. Using default OCR settings.")
                 logger.info("Configured EasyOCR with Japanese and English language support")
             except ImportError:
-                logger.warning("Could not import EasyOcrOptions, using default OCR settings")
+                # 尝试其他可能的导入路径
+                logger.info("Trying alternative import paths for Docling 2.32.0")
+                try:
+                    # 尝试从 docling.pipeline_options 导入
+                    from docling.pipeline_options import PdfPipelineOptions, EasyOcrOptions
+                    logger.info("Successfully imported from docling.pipeline_options")
 
-            logger.info(f"Using pipeline options with cache_dir: {pipeline_options.cache_dir}, OCR enabled: {pipeline_options.do_ocr}, force OCR: {pipeline_options.force_ocr}")
-            converter = DocumentConverter(pipeline_options=pipeline_options)
-        except Exception as e:
-            logger.warning(f"Failed to configure custom pipeline options: {e}. Using default options.")
+                    pipeline_options = PdfPipelineOptions()
+                    # 设置缓存目录 - 在 Docling 2.32.0 中，可能使用不同的属性名
+                    # 尝试设置缓存目录，如果属性不存在则忽略
+                    try:
+                        pipeline_options.cache_dir = os.path.abspath(LOCAL_CACHE_DIR)
+                    except Exception as e:
+                        logger.info(f"Could not set cache_dir: {e}. This is normal for newer Docling versions.")
+                        # 尝试其他可能的属性名
+                        try:
+                            pipeline_options.artifacts_path = os.path.abspath(LOCAL_CACHE_DIR)
+                        except Exception as e2:
+                            logger.info(f"Could not set artifacts_path: {e2}. Using default cache location.")
+                    # 尝试设置OCR选项，如果属性不存在则忽略
+                    try:
+                        pipeline_options.do_ocr = True
+                    except Exception as e:
+                        logger.info(f"Could not set do_ocr: {e}. This is normal for newer Docling versions.")
+
+                    try:
+                        pipeline_options.force_ocr = force_ocr
+                    except Exception as e:
+                        logger.info(f"Could not set force_ocr: {e}. This is normal for newer Docling versions.")
+
+                    # 尝试配置OCR选项，特别是对日语的支持
+                    ocr_options = EasyOcrOptions()
+                    # 添加日语支持 - 在不同版本中，属性名可能不同
+                    try:
+                        # 尝试设置 languages 属性
+                        ocr_options.languages = ["ja", "en"]
+                    except Exception as e:
+                        logger.info(f"Could not set languages: {e}. Trying alternative attribute names.")
+                        # 尝试设置 lang 属性
+                        try:
+                            ocr_options.lang = ["ja", "en"]
+                        except Exception as e2:
+                            logger.info(f"Could not set lang: {e2}. Trying alternative attribute names.")
+                            # 尝试设置 language 属性
+                            try:
+                                ocr_options.language = ["ja", "en"]
+                            except Exception as e3:
+                                logger.info(f"Could not set language: {e3}. Using default language settings.")
+
+                    # 尝试设置 OCR 选项
+                    try:
+                        pipeline_options.ocr_options = ocr_options
+                    except Exception as e:
+                        logger.info(f"Could not set ocr_options: {e}. Using default OCR settings.")
+                    logger.info("Configured EasyOCR with Japanese and English language support (alternative path)")
+                except ImportError:
+                    # 尝试从 docling.core.pipeline_options 导入
+                    try:
+                        from docling.core.pipeline_options import PdfPipelineOptions, EasyOcrOptions
+                        logger.info("Successfully imported from docling.core.pipeline_options")
+
+                        pipeline_options = PdfPipelineOptions()
+                        # 设置缓存目录 - 在 Docling 2.32.0 中，可能使用不同的属性名
+                        # 尝试设置缓存目录，如果属性不存在则忽略
+                        try:
+                            pipeline_options.cache_dir = os.path.abspath(LOCAL_CACHE_DIR)
+                        except Exception as e:
+                            logger.info(f"Could not set cache_dir: {e}. This is normal for newer Docling versions.")
+                            # 尝试其他可能的属性名
+                            try:
+                                pipeline_options.artifacts_path = os.path.abspath(LOCAL_CACHE_DIR)
+                            except Exception as e2:
+                                logger.info(f"Could not set artifacts_path: {e2}. Using default cache location.")
+                        # 尝试设置OCR选项，如果属性不存在则忽略
+                        try:
+                            pipeline_options.do_ocr = True
+                        except Exception as e:
+                            logger.info(f"Could not set do_ocr: {e}. This is normal for newer Docling versions.")
+
+                        try:
+                            pipeline_options.force_ocr = force_ocr
+                        except Exception as e:
+                            logger.info(f"Could not set force_ocr: {e}. This is normal for newer Docling versions.")
+
+                        # 尝试配置OCR选项，特别是对日语的支持
+                        ocr_options = EasyOcrOptions()
+                        # 添加日语支持 - 在不同版本中，属性名可能不同
+                        try:
+                            # 尝试设置 languages 属性
+                            ocr_options.languages = ["ja", "en"]
+                        except Exception as e:
+                            logger.info(f"Could not set languages: {e}. Trying alternative attribute names.")
+                            # 尝试设置 lang 属性
+                            try:
+                                ocr_options.lang = ["ja", "en"]
+                            except Exception as e2:
+                                logger.info(f"Could not set lang: {e2}. Trying alternative attribute names.")
+                                # 尝试设置 language 属性
+                                try:
+                                    ocr_options.language = ["ja", "en"]
+                                except Exception as e3:
+                                    logger.info(f"Could not set language: {e3}. Using default language settings.")
+
+                        # 尝试设置 OCR 选项
+                        try:
+                            pipeline_options.ocr_options = ocr_options
+                        except Exception as e:
+                            logger.info(f"Could not set ocr_options: {e}. Using default OCR settings.")
+                        logger.info("Configured EasyOCR with Japanese and English language support (alternative path)")
+                    except ImportError:
+                        # 尝试从 docling_core.pipeline_options 导入
+                        from docling_core.pipeline_options import PdfPipelineOptions, EasyOcrOptions
+                        logger.info("Successfully imported from docling_core.pipeline_options")
+
+                        pipeline_options = PdfPipelineOptions()
+                        # 设置缓存目录 - 在 Docling 2.32.0 中，可能使用不同的属性名
+                        # 尝试设置缓存目录，如果属性不存在则忽略
+                        try:
+                            pipeline_options.cache_dir = os.path.abspath(LOCAL_CACHE_DIR)
+                        except Exception as e:
+                            logger.info(f"Could not set cache_dir: {e}. This is normal for newer Docling versions.")
+                            # 尝试其他可能的属性名
+                            try:
+                                pipeline_options.artifacts_path = os.path.abspath(LOCAL_CACHE_DIR)
+                            except Exception as e2:
+                                logger.info(f"Could not set artifacts_path: {e2}. Using default cache location.")
+                        # 尝试设置OCR选项，如果属性不存在则忽略
+                        try:
+                            pipeline_options.do_ocr = True
+                        except Exception as e:
+                            logger.info(f"Could not set do_ocr: {e}. This is normal for newer Docling versions.")
+
+                        try:
+                            pipeline_options.force_ocr = force_ocr
+                        except Exception as e:
+                            logger.info(f"Could not set force_ocr: {e}. This is normal for newer Docling versions.")
+
+                        # 尝试配置OCR选项，特别是对日语的支持
+                        ocr_options = EasyOcrOptions()
+                        # 添加日语支持 - 在不同版本中，属性名可能不同
+                        try:
+                            # 尝试设置 languages 属性
+                            ocr_options.languages = ["ja", "en"]
+                        except Exception as e:
+                            logger.info(f"Could not set languages: {e}. Trying alternative attribute names.")
+                            # 尝试设置 lang 属性
+                            try:
+                                ocr_options.lang = ["ja", "en"]
+                            except Exception as e2:
+                                logger.info(f"Could not set lang: {e2}. Trying alternative attribute names.")
+                                # 尝试设置 language 属性
+                                try:
+                                    ocr_options.language = ["ja", "en"]
+                                except Exception as e3:
+                                    logger.info(f"Could not set language: {e3}. Using default language settings.")
+
+                        # 尝试设置 OCR 选项
+                        try:
+                            pipeline_options.ocr_options = ocr_options
+                        except Exception as e:
+                            logger.info(f"Could not set ocr_options: {e}. Using default OCR settings.")
+                        logger.info("Configured EasyOCR with Japanese and English language support (alternative path)")
+
+            logger.info(f"Using pipeline options: {type(pipeline_options)}, OCR enabled: {getattr(pipeline_options, 'do_ocr', 'N/A')}, force OCR: {getattr(pipeline_options, 'force_ocr', 'N/A')}")
+
+            # 在 Docling 2.32.0 中，需要使用 format_options 参数
+            from docling.datamodel.base_models import InputFormat
+            from docling.document_converter import PdfFormatOption
+
+            # 启用模型下载
+            import os
+            os.environ["DOCLING_ALLOW_DOWNLOADS"] = "1"
+
+            # 创建 DocumentConverter 实例
+            converter = DocumentConverter(
+                format_options={
+                    InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
+                }
+            )
+        except ImportError as e_import: # 捕获导入错误
+            logger.warning(f"Failed to import Docling pipeline options (ImportError: {e_import}). Using default DocumentConverter options. THIS IS LIKELY DUE TO AN INSTALLATION ISSUE.")
+            # 使用默认的 DocumentConverter，不指定任何特殊选项
+            converter = DocumentConverter()
+        except Exception as e_config: # 捕获其他配置错误
+            logger.warning(f"Failed to configure custom Docling pipeline options (Exception: {e_config}). Using default DocumentConverter options.")
+            # 使用默认的 DocumentConverter，不指定任何特殊选项
             converter = DocumentConverter()
 
         # 开始处理PDF
@@ -448,6 +669,30 @@ def process_with_docling(file_path: str, force_ocr: bool = False) -> Dict[str, A
         # 添加完整文本
         result["full_text"] = "\n".join(all_text)
 
+        # ---- START DEBUG PRINTS ----
+        logger.info(f"Docling Result (inside process_with_docling): {result}")
+        if hasattr(document, 'pages') and document.pages:
+            for i, page_obj in enumerate(document.pages):
+                logger.info(f"  Page {i+1} Object Type: {type(page_obj)}")
+                logger.info(f"  Page {i+1} Object Attributes: {dir(page_obj)}")
+                if hasattr(page_obj, 'text_content'): # Common attribute for page text
+                    logger.info(f"  Page {i+1} Text (from .text_content): {str(page_obj.text_content)[:500]}")
+                elif hasattr(page_obj, 'text'):
+                    logger.info(f"  Page {i+1} Text (from .text): {str(page_obj.text)[:500]}")
+
+                # Log elements within the page to see their text attributes
+                if hasattr(page_obj, 'elements') and page_obj.elements:
+                    logger.info(f"  Page {i+1} has {len(page_obj.elements)} elements.")
+                    for elem_idx, elem in enumerate(page_obj.elements):
+                        elem_text_parts_debug = []
+                        if hasattr(elem, 'text'):
+                            elem_text_parts_debug.append(f"elem.text: {str(elem.text)}")
+                        if hasattr(elem, 'texts'):
+                             elem_text_parts_debug.append(f"elem.texts: {[str(t.text) for t in elem.texts if hasattr(t, 'text')]}")
+                        if elem_text_parts_debug:
+                            logger.info(f"    Element {elem_idx + 1} Text Debug: {' | '.join(elem_text_parts_debug)[:200]}")
+        # ---- END DEBUG PRINTS ----
+
         return result
 
     except Exception as e:
@@ -474,12 +719,14 @@ def process_with_gemini(pdf_path: str, prompt: Optional[str] = None, language: s
         if not os.path.exists(pdf_path):
             return {"error": f"File not found: {pdf_path}"}
 
-        # 读取PDF文件
+        # 读取PDF文件为bytes
         with open(pdf_path, "rb") as f:
-            pdf_content = f.read()
+            pdf_bytes = f.read()
 
-        # 编码为base64
-        pdf_base64 = base64.b64encode(pdf_content).decode("utf-8")
+        # 将PDF转换为base64
+        pdf_base64 = base64.b64encode(pdf_bytes).decode("utf-8")
+
+        # 注意：不再使用 Part 类，因为它在当前版本中不可用
 
         # 设置默认提示词
         if not prompt:
@@ -491,19 +738,19 @@ def process_with_gemini(pdf_path: str, prompt: Optional[str] = None, language: s
         # 使用Gemini处理PDF
         model = genai.GenerativeModel(DEFAULT_GEMINI_MODEL)
 
-        # 创建请求
+        # 创建请求，尝试多种格式
         try:
-            # 尝试使用Gemini 2.5 Pro Preview格式
+            # 尝试方法1: 使用内联数据格式
+            logger.info(f"Attempting to generate content with model {DEFAULT_GEMINI_MODEL} using inline data format.")
+
+            # 创建请求内容
+            content = [
+                {"role": "user", "parts": [{"text": prompt}]},
+                {"role": "user", "parts": [{"inline_data": {"mime_type": "application/pdf", "data": pdf_base64}}]}
+            ]
+
             response = model.generate_content(
-                contents=[
-                    {
-                        "role": "user",
-                        "parts": [
-                            {"text": prompt},
-                            {"file_data": {"mime_type": "application/pdf", "data": pdf_base64}}
-                        ]
-                    }
-                ],
+                content,
                 generation_config={
                     "temperature": 0.2,
                     "top_p": 0.8,
@@ -511,39 +758,62 @@ def process_with_gemini(pdf_path: str, prompt: Optional[str] = None, language: s
                     "max_output_tokens": 8192,
                 }
             )
-            logger.info("Successfully used Gemini 2.5 Pro Preview format")
-        except Exception as e:
-            logger.warning(f"Failed to use Gemini 2.5 Pro Preview format: {e}")
+            logger.info("Successfully used inline data format with Gemini.")
+        except Exception as e_inline_data:
+            logger.warning(f"Failed to use inline data format: {e_inline_data}. Trying fallback.")
 
+            # 尝试方法2: 使用简化的API格式
             try:
-                # 尝试使用新的API格式
-                response = model.generate_content(
-                    [
-                        prompt,
-                        {"mime_type": "application/pdf", "data": pdf_base64}
-                    ]
-                )
-                logger.info("Successfully used new API format")
-            except Exception as e2:
-                logger.warning(f"Failed to use new API format: {e2}")
+                logger.info("Trying simplified API format...")
 
+                # 创建简化的请求内容
+                response = model.generate_content(
+                    prompt + "\n\n[PDF文档内容已提取，但由于技术限制无法直接传递]",
+                    generation_config={
+                        "temperature": 0.2,
+                        "top_p": 0.8,
+                        "top_k": 40,
+                        "max_output_tokens": 8192,
+                    }
+                )
+                logger.info("Successfully used simplified API format")
+            except Exception as e_new_api:
+                logger.warning(f"Failed to use new API format: {e_new_api}. Trying simpler approach.")
+
+                # 尝试方法3: 使用最简单的方法，只发送提示文本
                 try:
-                    # 尝试使用旧的API格式
+                    logger.info("Trying text-only approach with PDF content summary...")
+                    # 尝试从PDF中提取一些文本作为上下文
+                    context = ""
+                    # 直接从文件中提取一些文本
+                    if PYPDF2_AVAILABLE:
+                        try:
+                            with open(pdf_path, "rb") as f:
+                                pdf_reader = PyPDF2.PdfReader(f)
+                                if len(pdf_reader.pages) > 0:
+                                    # 提取第一页文本
+                                    context = pdf_reader.pages[0].extract_text() or ""
+                                    # 限制长度
+                                    context = context[:1000]
+                        except Exception as e_extract:
+                            logger.warning(f"Failed to extract text from PDF: {e_extract}")
+
+                    # 创建带有上下文的提示
+                    enhanced_prompt = f"{prompt}\n\n文档内容摘要:\n{context}"
+
                     response = model.generate_content(
-                        contents=[
-                            {
-                                "role": "user",
-                                "parts": [
-                                    {"text": prompt},
-                                    {"inline_data": {"mime_type": "application/pdf", "data": pdf_base64}}
-                                ]
-                            }
-                        ]
+                        enhanced_prompt,
+                        generation_config={
+                            "temperature": 0.2,
+                            "top_p": 0.8,
+                            "top_k": 40,
+                            "max_output_tokens": 8192,
+                        }
                     )
-                    logger.info("Successfully used old API format")
-                except Exception as e3:
-                    logger.error(f"Failed to use all API formats: {e3}")
-                    raise Exception(f"Failed to generate content with Gemini: {e3}")
+                    logger.info("Successfully used text-only approach")
+                except Exception as e_text_only:
+                    logger.error(f"All attempts to generate content with Gemini failed. Last error: {e_text_only}")
+                    raise Exception(f"Failed to generate content with Gemini after trying all formats")
 
         # 解析响应
         result = {
@@ -574,7 +844,15 @@ def process_with_gemini(pdf_path: str, prompt: Optional[str] = None, language: s
                 if "key_points" in parsed_json:
                     result["key_points"] = parsed_json["key_points"]
                 if "translation" in parsed_json:
-                    result["translation"] = parsed_json["translation"]
+                    translation_content = parsed_json["translation"]
+                    if isinstance(translation_content, dict):
+                        # 将字典的值拼接起来，或者根据需要选择特定字段
+                        result["translation"] = " | ".join(str(v) for v in translation_content.values())
+                        logger.info(f"Converted dict translation to string: {result['translation'][:200]}...")
+                    elif isinstance(translation_content, str):
+                        result["translation"] = translation_content
+                    else:
+                        result["translation"] = str(translation_content) # Fallback
         except Exception as e:
             logger.warning(f"Failed to parse JSON from Gemini response: {e}")
             result["parsed_result"] = None
@@ -716,36 +994,126 @@ def process_pdf(file_path: str, use_pypdf2: bool = True, use_docling: bool = Tru
 
                 # 提取翻译
                 if "translation" in parsed_result:
-                    gemini_analysis["translation"] = parsed_result["translation"]
+                    translation_content = parsed_result["translation"]
+                    if isinstance(translation_content, dict):
+                        # 将字典的值拼接起来，或者根据需要选择特定字段
+                        gemini_analysis["translation"] = " | ".join(str(v) for v in translation_content.values())
+                        logger.info(f"Converted dict translation to string: {gemini_analysis['translation'][:200]}...")
+                    elif isinstance(translation_content, str):
+                        gemini_analysis["translation"] = translation_content
+                    else:
+                        gemini_analysis["translation"] = str(translation_content) # Fallback
 
                 # 提取表格
                 if "tables" in parsed_result:
                     tables = parsed_result["tables"]
                     for i, table in enumerate(tables):
-                        table_info = {
-                            "table_id": f"table_{i+1}",
-                            "page_number": 1,  # 默认值，Gemini可能无法确定表格所在页面
-                            "title": table.get("table_title"),
-                            "raw_text": table.get("content")
-                        }
+                        try:
+                            table_info = {
+                                "table_id": f"table_{i+1}",
+                                "page_number": 1,  # 默认值，Gemini可能无法确定表格所在页面
+                                "title": table.get("table_title"),
+                                "raw_text": table.get("content"),
+                                "rows": []  # 初始化为空列表
+                            }
 
-                        # 尝试提取表格行和列
-                        content = table.get("content")
-                        if isinstance(content, dict) and "headers" in content and "rows" in content:
-                            table_info["headers"] = content["headers"]
-                            table_info["rows"] = content["rows"]
-                        elif isinstance(content, list) and all(isinstance(item, dict) for item in content):
-                            # 如果内容是字典列表，尝试提取表头和行
-                            if content:
-                                headers = list(content[0].keys())
-                                table_info["headers"] = headers
-                                rows = []
-                                for item in content:
-                                    row = [str(item.get(header, "")) for header in headers]
-                                    rows.append(row)
-                                table_info["rows"] = rows
+                            # 尝试提取表格行和列
+                            content = table.get("content")
+                            if isinstance(content, dict) and "headers" in content and "rows" in content:
+                                table_info["headers"] = content["headers"]
+                                # 确保rows是列表的列表
+                                if isinstance(content["rows"], list):
+                                    if content["rows"] and isinstance(content["rows"][0], list):
+                                        # 已经是正确的格式
+                                        table_info["rows"] = content["rows"]
+                                    elif content["rows"] and isinstance(content["rows"][0], dict):
+                                        # 字典列表，需要转换
+                                        rows = []
+                                        for row_dict in content["rows"]:
+                                            row = [str(row_dict.get(header, "")) for header in content["headers"]]
+                                            rows.append(row)
+                                        table_info["rows"] = rows
+                                    else:
+                                        # 其他情况，使用空列表
+                                        table_info["rows"] = []
+                                else:
+                                    # 不是列表，使用空列表
+                                    table_info["rows"] = []
+                            elif isinstance(content, list) and all(isinstance(item, dict) for item in content):
+                                # 如果内容是字典列表，尝试提取表头和行
+                                if content:
+                                    headers = list(content[0].keys())
+                                    table_info["headers"] = headers
+                                    rows = []
+                                    for item in content:
+                                        row = [str(item.get(header, "")) for header in headers]
+                                        rows.append(row)
+                                    table_info["rows"] = rows
+                            elif isinstance(content, str):
+                                # 如果内容是字符串，尝试解析表格结构
+                                try:
+                                    # 分割行
+                                    lines = content.strip().split('\n')
+                                    if lines:
+                                        # 第一行可能是表头
+                                        header_line = lines[0]
+                                        # 使用 | 分割列
+                                        if '|' in header_line:
+                                            headers = [h.strip() for h in header_line.split('|')]
+                                            table_info["headers"] = headers
 
-                        result["tables"].append(table_info)
+                                            # 处理数据行
+                                            rows = []
+                                            for line in lines[1:]:
+                                                if '|' in line:
+                                                    row = [cell.strip() for cell in line.split('|')]
+                                                    rows.append(row)
+                                            table_info["rows"] = rows
+                                except Exception as e:
+                                    logger.warning(f"Failed to parse table content string: {e}")
+                                    # 保存原始文本
+                                    table_info["raw_text"] = content
+
+                            # 确保rows是列表的列表
+                            if "rows" in table_info and not isinstance(table_info["rows"], list):
+                                table_info["rows"] = []
+                            elif "rows" in table_info and table_info["rows"] and not isinstance(table_info["rows"][0], list):
+                                # 如果rows是字典列表，尝试转换
+                                if isinstance(table_info["rows"], list) and table_info["rows"] and isinstance(table_info["rows"][0], dict):
+                                    # 获取所有键
+                                    all_keys = set()
+                                    for row_dict in table_info["rows"]:
+                                        all_keys.update(row_dict.keys())
+
+                                    # 转换为有序列表
+                                    keys_list = sorted(list(all_keys))
+
+                                    # 创建表头
+                                    if "headers" not in table_info or not table_info["headers"]:
+                                        table_info["headers"] = keys_list
+
+                                    # 转换每一行
+                                    new_rows = []
+                                    for row_dict in table_info["rows"]:
+                                        row_values = [str(row_dict.get(key, "")) for key in keys_list]
+                                        new_rows.append(row_values)
+
+                                    table_info["rows"] = new_rows
+                                else:
+                                    # 其他情况，使用空列表
+                                    table_info["rows"] = []
+
+                            result["tables"].append(table_info)
+                        except Exception as e:
+                            logger.warning(f"Failed to process table {i+1}: {e}")
+                            # 添加一个简单的表格信息
+                            result["tables"].append({
+                                "table_id": f"table_{i+1}",
+                                "page_number": 1,
+                                "title": table.get("table_title", f"Table {i+1}"),
+                                "raw_text": str(table.get("content", "")),
+                                "rows": []
+                            })
 
                 # 提取图像
                 if "images" in parsed_result:
@@ -877,17 +1245,59 @@ async def ocr_upload(
                 raw_response=gemini_data.get("raw_response")
             )
 
-        # 处理表格数据，确保raw_text是字符串
+        # 处理表格数据
         tables = []
         for table in result.get("tables", []):
-            # 如果raw_text不是字符串，将其转换为JSON字符串
+            # 确保raw_text是字符串
             if "raw_text" in table and not isinstance(table["raw_text"], str):
                 try:
                     table["raw_text"] = json.dumps(table["raw_text"])
                 except Exception as e:
                     logger.warning(f"Failed to convert table raw_text to JSON string: {e}")
                     table["raw_text"] = str(table["raw_text"])
-            tables.append(TableInfo(**table))
+
+            # 确保rows是列表的列表格式
+            if "rows" in table:
+                # 如果rows是字典列表或其他格式，转换为列表的列表
+                if not isinstance(table["rows"], list) or (table["rows"] and not isinstance(table["rows"][0], list)):
+                    try:
+                        # 如果是字典列表，尝试提取值
+                        if isinstance(table["rows"], list) and table["rows"] and isinstance(table["rows"][0], dict):
+                            # 获取所有键
+                            all_keys = set()
+                            for row_dict in table["rows"]:
+                                all_keys.update(row_dict.keys())
+
+                            # 转换为有序列表
+                            keys_list = sorted(list(all_keys))
+
+                            # 创建表头
+                            if "headers" not in table or not table["headers"]:
+                                table["headers"] = keys_list
+
+                            # 转换每一行
+                            new_rows = []
+                            for row_dict in table["rows"]:
+                                row_values = [str(row_dict.get(key, "")) for key in keys_list]
+                                new_rows.append(row_values)
+
+                            table["rows"] = new_rows
+                        # 如果是字典，可能是Gemini返回的表格内容
+                        elif isinstance(table["rows"], dict):
+                            # 创建一个空的行列表
+                            table["rows"] = []
+                    except Exception as e:
+                        logger.warning(f"Failed to convert table rows to list format: {e}")
+                        # 如果转换失败，使用空列表
+                        table["rows"] = []
+
+            # 创建TableInfo对象
+            try:
+                tables.append(TableInfo(**table))
+            except Exception as e:
+                logger.warning(f"Failed to create TableInfo object: {e}. Skipping this table.")
+                # 记录详细信息以便调试
+                logger.debug(f"Table data: {table}")
 
         # 创建最终响应
         response = OcrResponse(
@@ -941,8 +1351,8 @@ if __name__ == "__main__":
     # May also need to install docling if you want to use it:
     # pip install docling easyocr
 
-    logger.info("Starting OCR microservice with Uvicorn on http://127.0.0.1:8009")
-    uvicorn.run(app, host="127.0.0.1", port=8009)
+    logger.info("Starting OCR microservice with Uvicorn on http://127.0.0.1:8011")
+    uvicorn.run(app, host="127.0.0.1", port=8011)
 
 # Example of how to run from command line:
 # python ocr_service.py

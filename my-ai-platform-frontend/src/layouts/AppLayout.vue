@@ -67,7 +67,7 @@ import type { DropdownOption, MenuOption } from 'naive-ui'; // 单独导入类�
 import { ref } from 'vue';
 import { onMounted } from 'vue';
 import { NLayout, NLayoutHeader, NLayoutSider, NLayoutContent, NLayoutFooter, NMenu, NButton, NSpace, NIcon } from 'naive-ui';
-import { AlbumsOutline, ReaderOutline } from '@vicons/ionicons5'; // 引入图标
+import { AlbumsOutline, ReaderOutline, DocumentTextOutline } from '@vicons/ionicons5'; // 引入图标
 
 const router = useRouter();
 const authStore = useAuthStore();
@@ -112,6 +112,15 @@ const menuOptions: MenuOption[] = [
     ),
     key: 'summarize',
     icon: () => h(NIcon, null, { default: () => h(ReaderOutline) })
+  },
+  {
+    label: () => h(
+      RouterLink,
+      { to: { name: 'Ocr' } },
+      { default: () => 'OCR文档处理' }
+    ),
+    key: 'ocr',
+    icon: () => h(NIcon, null, { default: () => h(DocumentTextOutline) })
   }
 ];
 

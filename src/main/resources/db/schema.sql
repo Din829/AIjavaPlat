@@ -41,3 +41,20 @@ CREATE TABLE IF NOT EXISTS prompts (
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,  -- 更新时间
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE             -- 外键约束，用户删除时级联删除Prompt
 );
+
+-- OCR任务表
+-- 存储用户的OCR处理任务信息
+CREATE TABLE IF NOT EXISTS ocr_tasks (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,                                    -- 任务ID，自增主键
+    user_id BIGINT NOT NULL,                                                 -- 用户ID，外键关联users表
+    task_id VARCHAR(36) NOT NULL UNIQUE,                                     -- 唯一任务ID（UUID格式）
+    status VARCHAR(20) NOT NULL,                                             -- 任务状态：PENDING, PROCESSING, COMPLETED, FAILED
+    original_filename VARCHAR(255),                                          -- 原始文件名
+    stored_filename VARCHAR(255),                                            -- 存储的文件名（如果需要本地存储）
+    result_json LONGTEXT,                                                    -- OCR结果（JSON字符串）
+    error_message TEXT,                                                      -- 错误信息（如果有）
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,                  -- 创建时间
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,  -- 更新时间
+    completed_at DATETIME,                                                   -- 完成时间
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE             -- 外键约束，用户删除时级联删除任务
+);

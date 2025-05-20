@@ -46,6 +46,12 @@ const routes: Array<RouteRecordRaw> = [
     component: () => import('../views/SummarizationPage.vue'),
     meta: { requiresAuth: true, title: '网页摘要' }
   },
+  {
+    path: '/ocr',
+    name: 'Ocr',
+    component: () => import('../views/OcrPage.vue'),
+    meta: { requiresAuth: true, title: 'OCR文档处理' }
+  },
 
   // 重定向
   {
