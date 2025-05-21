@@ -21,7 +21,9 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
@@ -44,7 +46,7 @@ public class OcrProcessingServiceImpl implements OcrProcessingService {
     @Value("${ocr.gemini.api-key:AIzaSyDFLyEYqgaC6plSFF5IjvQEW0FEug6o14o}")
     private String geminiApiKey;
 
-    @Value("${ocr.gemini.url:https://generativelanguage.googleapis.com/v1/models/gemini-1.5-pro-preview-0506:generateContent}")
+    @Value("${ocr.gemini.url:https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro-preview-05-06:generateContent}")
     private String geminiUrl;
 
     /**
@@ -95,14 +97,39 @@ public class OcrProcessingServiceImpl implements OcrProcessingService {
                 throw new UnsupportedOperationException("不支持的文件类型: " + mimeType);
             }
 
-            result.put("extractedText", extractedText);
+            // 检查提取的文本是否为空
+            if (extractedText == null || extractedText.trim().isEmpty()) {
+                log.warn("提取的文本为空: {}", filePath);
+                result.put("extractedText", "");
+                result.put("warning", "未能提取到文本内容");
+            } else {
+                log.info("成功提取文本，长度: {}", extractedText.length());
+                result.put("extractedText", extractedText);
+
+                // 添加文本摘要（前100个字符）用于调试
+                String textSummary = extractedText.length() > 100
+                    ? extractedText.substring(0, 100) + "..."
+                    : extractedText;
+                result.put("textSummary", textSummary);
+            }
 
             // 使用Gemini进行文本分析
             if (useGemini && extractedText != null && !extractedText.trim().isEmpty()) {
+                log.info("开始使用Gemini分析文本");
                 Map<String, Object> geminiOptions = new HashMap<>();
                 geminiOptions.put("language", language);
                 Map<String, Object> analysisResult = analyzeWithGemini(extractedText, geminiOptions).get();
+
+                if (analysisResult.containsKey("error")) {
+                    log.warn("Gemini分析失败: {}", analysisResult.get("error"));
+                } else {
+                    log.info("Gemini分析成功");
+                }
+
                 result.put("analysis", analysisResult);
+            } else if (useGemini) {
+                log.warn("跳过Gemini分析，因为提取的文本为空");
+                result.put("analysis", Map.of("warning", "无法分析空文本"));
             }
 
             log.info("文件处理完成: {}", filePath);
@@ -226,14 +253,23 @@ public class OcrProcessingServiceImpl implements OcrProcessingService {
 
             // 构建Gemini请求体
             Map<String, Object> requestBody = new HashMap<>();
-            Map<String, Object> contents = new HashMap<>();
 
             // 构建提示词
             String prompt = "请分析以下文本，提取关键信息并以JSON格式返回结构化数据。\n\n" + text;
 
-            contents.put("role", "user");
-            contents.put("parts", new Object[]{Map.of("text", prompt)});
-            requestBody.put("contents", new Object[]{contents});
+            // 构建contents数组
+            List<Map<String, Object>> contents = new ArrayList<>();
+            Map<String, Object> content = new HashMap<>();
+            content.put("role", "user");
+
+            List<Map<String, Object>> parts = new ArrayList<>();
+            Map<String, Object> part = new HashMap<>();
+            part.put("text", prompt);
+            parts.add(part);
+
+            content.put("parts", parts);
+            contents.add(content);
+            requestBody.put("contents", contents);
 
             // 添加生成参数
             Map<String, Object> generationConfig = new HashMap<>();
@@ -254,7 +290,24 @@ public class OcrProcessingServiceImpl implements OcrProcessingService {
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                 // 解析JSON响应
                 JsonNode jsonNode = objectMapper.readTree(response.getBody());
-                String responseText = jsonNode.path("candidates").path(0).path("content").path("parts").path(0).path("text").asText("");
+                String responseText = "";
+
+                // 检查响应格式
+                if (jsonNode.has("candidates") &&
+                    jsonNode.path("candidates").isArray() &&
+                    jsonNode.path("candidates").size() > 0) {
+
+                    responseText = jsonNode.path("candidates")
+                                          .path(0)
+                                          .path("content")
+                                          .path("parts")
+                                          .path(0)
+                                          .path("text")
+                                          .asText("");
+                } else {
+                    log.warn("Gemini API响应格式不符合预期: {}", response.getBody());
+                    return CompletableFuture.completedFuture(Map.of("error", "Gemini API响应格式不符合预期"));
+                }
 
                 // 尝试从响应文本中提取JSON
                 Map<String, Object> analysisResult = extractJsonFromText(responseText);

@@ -1,9 +1,10 @@
 <template>
   <div class="ocr-page">
+
     <n-card title="OCR文档处理" class="ocr-card">
       <template #header-extra>
         <n-space>
-          <n-button @click="resetForm" :disabled="isProcessing">
+          <n-button @click="resetForm" :disabled="isProcessing || isLoading">
             重置
           </n-button>
         </n-space>
@@ -18,11 +19,12 @@
           :accept="acceptFileTypes"
           :disabled="isUploading || isProcessing"
           :show-file-list="false"
+          @before-upload="handleBeforeUpload"
         >
           <n-upload-dragger>
             <div class="upload-trigger">
               <n-icon size="48" :depth="3">
-                <document-add-outline />
+                <document-outline />
               </n-icon>
               <div class="upload-text">
                 <p>点击或拖拽文件到此区域上传</p>
@@ -70,7 +72,7 @@
       </div>
 
       <!-- 处理中状态 -->
-      <div v-if="isProcessing || currentTask?.status === 'PROCESSING'" class="processing-section">
+      <div v-if="isProcessing && uploadedFile && currentTask?.fileName" class="processing-section">
         <n-spin size="large">
           <template #description>
             <span>正在处理文档，请稍候...</span>
@@ -88,7 +90,10 @@
         <div class="result-header">
           <h3>处理结果</h3>
           <n-space>
-            <n-button @click="resetForm" type="primary">
+            <n-button @click="refreshResult" type="primary" :loading="isLoading">
+              刷新结果
+            </n-button>
+            <n-button @click="resetForm">
               处理新文档
             </n-button>
           </n-space>
@@ -99,6 +104,7 @@
           <p>文件名: {{ currentTask.fileName }}</p>
           <p>创建时间: {{ currentTask.createdAt }}</p>
           <p>完成时间: {{ currentTask.completedAt }}</p>
+          <p>处理耗时: {{ processingTime }}</p>
         </div>
 
         <!-- 结果内容 -->
@@ -106,9 +112,9 @@
           <n-tabs type="line" animated>
             <!-- 文本内容标签页 -->
             <n-tab-pane name="text" tab="文本内容">
-              <div v-if="resultContent?.text" class="result-text">
+              <div v-if="resultContent?.extractedText" class="result-text">
                 <n-scrollbar style="max-height: 400px">
-                  <pre>{{ resultContent.text }}</pre>
+                  <pre>{{ resultContent.extractedText }}</pre>
                 </n-scrollbar>
               </div>
               <n-empty v-else description="无文本内容" />
@@ -160,14 +166,15 @@ import {
   NSpin, NTabs, NTabPane, NEmpty, NScrollbar, NDataTable,
   NForm, NFormItem, NCheckbox, NSelect
 } from 'naive-ui';
-import { DocumentAddOutline } from '@vicons/ionicons5';
+import { DocumentOutline } from '@vicons/ionicons5';
 import { useOcrStore } from '../stores/ocrStore';
-import { OcrTaskStatus } from '../types/ocr';
+import { OcrTaskStatus } from '../services/ocrService';
 
 // 状态管理
 const ocrStore = useOcrStore();
 const uploadRef = ref();
 const formRef = ref();
+const uploadedFile = ref(null); // 跟踪上传的文件
 
 // 表单数据
 const formValue = ref({
@@ -194,37 +201,117 @@ const acceptFileTypes = '.pdf,.jpg,.jpeg,.png,.tiff,.tif,.bmp';
 // 计算属性
 const isUploading = computed(() => ocrStore.isUploading);
 const isProcessing = computed(() => ocrStore.isProcessing);
+const isLoading = computed(() => ocrStore.isLoading);
 const currentTask = computed(() => ocrStore.currentTask);
 const resultContent = computed(() => {
-  if (!currentTask.value || !currentTask.value.result) return null;
+  if (!currentTask.value) {
+    console.log('currentTask is null');
+    return null;
+  }
+
+  console.log('currentTask:', JSON.stringify(currentTask.value, null, 2));
+
+  if (!currentTask.value.result) {
+    console.log('currentTask.result is null or undefined');
+    // 如果任务已完成但没有结果，尝试重新获取结果
+    if (currentTask.value.status === OcrTaskStatus.COMPLETED && currentTask.value.taskId) {
+      console.log('任务已完成但没有结果，尝试重新获取');
+      ocrStore.getTaskResult(currentTask.value.taskId).catch(e => {
+        console.error('重新获取结果失败:', e);
+      });
+    }
+    return null;
+  }
+
+  console.log('resultContent:', JSON.stringify(currentTask.value.result, null, 2));
   return currentTask.value.result;
 });
 
 // 格式化分析结果（简单的换行处理）
 const formattedAnalysis = computed(() => {
   if (!resultContent.value?.analysis) return '';
-  // 简单地将换行符转换为<br>标签，将Markdown的#标题转换为<h>标签
-  return resultContent.value.analysis
+
+  // 检查analysis是否为错误对象
+  if (resultContent.value.analysis.error) {
+    return `<span style="color: red;">分析失败: ${resultContent.value.analysis.error}</span>`;
+  }
+
+  // 如果是字符串，进行格式化
+  if (typeof resultContent.value.analysis === 'string') {
+    // 简单地将换行符转换为<br>标签，将Markdown的#标题转换为<h>标签
+    return resultContent.value.analysis
+      .replace(/\n/g, '<br>')
+      .replace(/#{1,6}\s+(.*?)(?:\n|$)/g, '<strong>$1</strong><br>');
+  }
+
+  // 如果是对象但不是错误对象，转为JSON字符串
+  return JSON.stringify(resultContent.value.analysis, null, 2)
     .replace(/\n/g, '<br>')
-    .replace(/#{1,6}\s+(.*?)(?:\n|$)/g, '<strong>$1</strong><br>');
+    .replace(/ /g, '&nbsp;');
+});
+
+// 计算处理耗时
+const processingTime = computed(() => {
+  if (!currentTask.value || !currentTask.value.createdAt || !currentTask.value.completedAt) {
+    return '未知';
+  }
+
+  try {
+    const createdAt = new Date(currentTask.value.createdAt);
+    const completedAt = new Date(currentTask.value.completedAt);
+    const diffMs = completedAt.getTime() - createdAt.getTime();
+
+    // 如果时间差小于1秒，显示毫秒
+    if (diffMs < 1000) {
+      return `${diffMs}毫秒`;
+    }
+
+    // 否则显示秒
+    const diffSec = Math.floor(diffMs / 1000);
+    return `${diffSec}秒`;
+  } catch (e) {
+    console.error('计算处理耗时出错:', e);
+    return '计算错误';
+  }
 });
 
 // 自定义上传请求
 const customRequest = ({ file }) => {
   if (!file) return;
 
-  ocrStore.uploadFile(file, {
-    usePypdf2: formValue.value.usePypdf2,
-    useDocling: formValue.value.useDocling,
-    useGemini: formValue.value.useGemini,
-    forceOcr: formValue.value.forceOcr,
-    language: formValue.value.language
-  });
+  console.log('上传文件:', file);
+  console.log('文件类型:', file.type);
+  console.log('文件大小:', file.size);
+
+  // 设置上传的文件
+  if (file instanceof File) {
+    uploadedFile.value = file;
+    ocrStore.uploadFile(file, {
+      usePypdf2: formValue.value.usePypdf2,
+      useDocling: formValue.value.useDocling,
+      useGemini: formValue.value.useGemini,
+      forceOcr: formValue.value.forceOcr,
+      language: formValue.value.language
+    });
+  } else if (file.file && file.file instanceof File) {
+    // 有些UI组件可能会将文件包装在一个对象中
+    uploadedFile.value = file.file;
+    ocrStore.uploadFile(file.file, {
+      usePypdf2: formValue.value.usePypdf2,
+      useDocling: formValue.value.useDocling,
+      useGemini: formValue.value.useGemini,
+      forceOcr: formValue.value.forceOcr,
+      language: formValue.value.language
+    });
+  } else {
+    console.error('无效的文件对象:', file);
+  }
 };
 
 // 重置表单
 const resetForm = () => {
   ocrStore.reset();
+  uploadedFile.value = null; // 清除上传的文件
   if (uploadRef.value) {
     uploadRef.value.clear();
   }
@@ -235,6 +322,19 @@ const resetForm = () => {
     forceOcr: false,
     language: 'auto'
   };
+};
+
+// 刷新结果
+const refreshResult = async () => {
+  if (currentTask.value && currentTask.value.taskId) {
+    try {
+      console.log('手动刷新结果，任务ID:', currentTask.value.taskId);
+      await ocrStore.getTaskResult(currentTask.value.taskId);
+      console.log('刷新结果成功');
+    } catch (error) {
+      console.error('刷新结果失败:', error);
+    }
+  }
 };
 
 // 获取表格列
@@ -258,14 +358,35 @@ const getTableData = (table) => {
   return table.data;
 };
 
+// 文件上传前的处理
+const handleBeforeUpload = ({ file }) => {
+  console.log('文件上传前:', file);
+  if (file) {
+    // 设置上传的文件，但此时还未开始上传
+    if (file instanceof File) {
+      uploadedFile.value = file;
+    } else if (file.file && file.file instanceof File) {
+      uploadedFile.value = file.file;
+    }
+  }
+  return true; // 允许上传
+};
+
 // 生命周期钩子
 onMounted(() => {
-  // 如果有正在处理的任务，开始轮询
-  if (currentTask.value &&
-      (currentTask.value.status === OcrTaskStatus.PENDING ||
-       currentTask.value.status === OcrTaskStatus.PROCESSING)) {
-    ocrStore.startPolling(currentTask.value.taskId);
-  }
+  // 添加调试日志
+  console.log('OcrPage mounted, currentTask:', currentTask.value);
+  console.log('isProcessing:', isProcessing.value);
+  console.log('isUploading:', isUploading.value);
+  console.log('uploadedFile:', uploadedFile.value);
+
+  // 强制重置状态，确保页面加载时不会显示加载指示器
+  ocrStore.stopPolling();
+  ocrStore.reset();
+  uploadedFile.value = null;
+
+  // 不再自动开始轮询，只有在用户上传文件后才开始轮询
+  console.log('页面加载完成，状态已重置');
 });
 
 onUnmounted(() => {
@@ -359,4 +480,6 @@ onUnmounted(() => {
 .table-item h4 {
   margin-bottom: 10px;
 }
+
+/* 全局加载指示器已移除 */
 </style>

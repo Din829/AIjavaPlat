@@ -1,9 +1,7 @@
 import apiClient from './apiClient';
-import { AxiosResponse } from 'axios';
+import type { AxiosResponse } from 'axios';
 
-/**
- * OCR任务状态
- */
+// 直接在这里定义类型，避免导入问题
 export enum OcrTaskStatus {
   PENDING = 'PENDING',
   PROCESSING = 'PROCESSING',
@@ -11,9 +9,6 @@ export enum OcrTaskStatus {
   FAILED = 'FAILED'
 }
 
-/**
- * OCR上传请求参数
- */
 export interface OcrUploadRequest {
   usePypdf2?: boolean;
   useDocling?: boolean;
@@ -22,9 +17,6 @@ export interface OcrUploadRequest {
   language?: string;
 }
 
-/**
- * OCR任务响应
- */
 export interface OcrTaskResponse {
   taskId: string;
   status: OcrTaskStatus;
@@ -49,7 +41,7 @@ const ocrService = {
   async uploadFile(file: File, options: OcrUploadRequest = {}): Promise<OcrTaskResponse> {
     const formData = new FormData();
     formData.append('file', file);
-    
+
     // 添加选项参数
     if (options.usePypdf2 !== undefined) {
       formData.append('usePypdf2', options.usePypdf2.toString());
@@ -66,7 +58,7 @@ const ocrService = {
     if (options.language) {
       formData.append('language', options.language);
     }
-    
+
     const response: AxiosResponse<OcrTaskResponse> = await apiClient.post(
       '/api/ocr/upload',
       formData,
@@ -76,10 +68,10 @@ const ocrService = {
         }
       }
     );
-    
+
     return response.data;
   },
-  
+
   /**
    * 获取任务状态
    * @param taskId 任务ID
@@ -87,12 +79,12 @@ const ocrService = {
    */
   async getTaskStatus(taskId: string): Promise<OcrTaskResponse> {
     const response: AxiosResponse<OcrTaskResponse> = await apiClient.get(
-      `/api/ocr/status/${taskId}`
+      `/api/ocr/tasks/${taskId}/status`
     );
-    
+
     return response.data;
   },
-  
+
   /**
    * 获取任务结果
    * @param taskId 任务ID
@@ -100,12 +92,12 @@ const ocrService = {
    */
   async getTaskResult(taskId: string): Promise<OcrTaskResponse> {
     const response: AxiosResponse<OcrTaskResponse> = await apiClient.get(
-      `/api/ocr/result/${taskId}`
+      `/api/ocr/tasks/${taskId}`
     );
-    
+
     return response.data;
   },
-  
+
   /**
    * 获取用户的所有OCR任务
    * @returns 任务响应数组
@@ -114,7 +106,7 @@ const ocrService = {
     const response: AxiosResponse<OcrTaskResponse[]> = await apiClient.get(
       '/api/ocr/tasks'
     );
-    
+
     return response.data;
   }
 };

@@ -8,7 +8,7 @@
           </n-button>
         </n-space>
       </template>
-      
+
       <!-- 文件上传区域 -->
       <div class="upload-section" v-if="!currentTask || currentTask.status === 'FAILED'">
         <n-upload
@@ -22,7 +22,7 @@
           <n-upload-dragger>
             <div class="upload-trigger">
               <n-icon size="48" :depth="3">
-                <document-add-outline />
+                <document-outline />
               </n-icon>
               <div class="upload-text">
                 <p>点击或拖拽文件到此区域上传</p>
@@ -31,7 +31,7 @@
             </div>
           </n-upload-dragger>
         </n-upload>
-        
+
         <!-- 上传选项 -->
         <div class="upload-options">
           <n-form
@@ -57,7 +57,7 @@
                 </n-checkbox>
               </n-space>
             </n-form-item>
-            
+
             <n-form-item label="语言">
               <n-select
                 v-model:value="formValue.language"
@@ -68,7 +68,7 @@
           </n-form>
         </div>
       </div>
-      
+
       <!-- 处理中状态 -->
       <div v-if="isProcessing || currentTask?.status === 'PROCESSING'" class="processing-section">
         <n-spin size="large">
@@ -82,7 +82,7 @@
           <p>创建时间: {{ currentTask.createdAt }}</p>
         </div>
       </div>
-      
+
       <!-- 处理结果 -->
       <div v-if="currentTask?.status === 'COMPLETED'" class="result-section">
         <div class="result-header">
@@ -93,14 +93,14 @@
             </n-button>
           </n-space>
         </div>
-        
+
         <div class="result-info">
           <p>任务ID: {{ currentTask.taskId }}</p>
           <p>文件名: {{ currentTask.fileName }}</p>
           <p>创建时间: {{ currentTask.createdAt }}</p>
           <p>完成时间: {{ currentTask.completedAt }}</p>
         </div>
-        
+
         <!-- 结果内容 -->
         <div class="result-content">
           <n-tabs type="line" animated>
@@ -113,7 +113,7 @@
               </div>
               <n-empty v-else description="无文本内容" />
             </n-tab-pane>
-            
+
             <!-- 表格内容标签页 -->
             <n-tab-pane name="tables" tab="表格内容">
               <div v-if="resultContent?.tables && resultContent.tables.length > 0" class="result-tables">
@@ -129,7 +129,7 @@
               </div>
               <n-empty v-else description="无表格内容" />
             </n-tab-pane>
-            
+
             <!-- Gemini分析标签页 -->
             <n-tab-pane name="analysis" tab="内容分析">
               <div v-if="resultContent?.analysis" class="result-analysis">
@@ -139,7 +139,7 @@
               </div>
               <n-empty v-else description="无内容分析" />
             </n-tab-pane>
-            
+
             <!-- 原始JSON标签页 -->
             <n-tab-pane name="json" tab="原始JSON">
               <n-scrollbar style="max-height: 400px">
@@ -155,14 +155,14 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
-import { 
-  NCard, NUpload, NUploadDragger, NIcon, NButton, NSpace, 
+import {
+  NCard, NUpload, NUploadDragger, NIcon, NButton, NSpace,
   NSpin, NTabs, NTabPane, NEmpty, NScrollbar, NDataTable,
   NForm, NFormItem, NCheckbox, NSelect
 } from 'naive-ui';
-import { DocumentAddOutline } from '@vicons/ionicons5';
-import { useOcrStore } from '@/stores/ocrStore';
-import { OcrTaskStatus } from '@/services/ocrService';
+import { DocumentOutline } from '@vicons/ionicons5';
+import { useOcrStore } from '../stores/ocrStore';
+import { OcrTaskStatus } from '../services/ocrService';
 import { marked } from 'marked';
 
 // 状态管理
@@ -210,14 +210,32 @@ const formattedAnalysis = computed(() => {
 // 自定义上传请求
 const customRequest = ({ file }) => {
   if (!file) return;
-  
-  ocrStore.uploadFile(file, {
-    usePypdf2: formValue.value.usePypdf2,
-    useDocling: formValue.value.useDocling,
-    useGemini: formValue.value.useGemini,
-    forceOcr: formValue.value.forceOcr,
-    language: formValue.value.language
-  });
+
+  console.log('上传文件:', file);
+  console.log('文件类型:', file.type);
+  console.log('文件大小:', file.size);
+
+  // 确保file是一个有效的File对象
+  if (file instanceof File) {
+    ocrStore.uploadFile(file, {
+      usePypdf2: formValue.value.usePypdf2,
+      useDocling: formValue.value.useDocling,
+      useGemini: formValue.value.useGemini,
+      forceOcr: formValue.value.forceOcr,
+      language: formValue.value.language
+    });
+  } else if (file.file && file.file instanceof File) {
+    // 有些UI组件可能会将文件包装在一个对象中
+    ocrStore.uploadFile(file.file, {
+      usePypdf2: formValue.value.usePypdf2,
+      useDocling: formValue.value.useDocling,
+      useGemini: formValue.value.useGemini,
+      forceOcr: formValue.value.forceOcr,
+      language: formValue.value.language
+    });
+  } else {
+    console.error('无效的文件对象:', file);
+  }
 };
 
 // 重置表单
@@ -238,7 +256,7 @@ const resetForm = () => {
 // 获取表格列
 const getTableColumns = (table) => {
   if (!table || !table.data || table.data.length === 0) return [];
-  
+
   // 使用第一行数据的键作为列
   const firstRow = table.data[0];
   return Object.keys(firstRow).map(key => ({
@@ -259,8 +277,8 @@ const getTableData = (table) => {
 // 生命周期钩子
 onMounted(() => {
   // 如果有正在处理的任务，开始轮询
-  if (currentTask.value && 
-      (currentTask.value.status === OcrTaskStatus.PENDING || 
+  if (currentTask.value &&
+      (currentTask.value.status === OcrTaskStatus.PENDING ||
        currentTask.value.status === OcrTaskStatus.PROCESSING)) {
     ocrStore.startPolling(currentTask.value.taskId);
   }

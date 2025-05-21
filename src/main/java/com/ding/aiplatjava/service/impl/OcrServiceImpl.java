@@ -165,9 +165,27 @@ public class OcrServiceImpl implements OcrService {
             // 5. 处理成功，更新任务状态
             LocalDateTime completedAt = LocalDateTime.now();
             String resultJson = objectMapper.writeValueAsString(result);
-            ocrTaskMapper.updateResult(taskId, resultJson, completedAt);
 
-            log.info("OCR任务处理成功: {}", taskId);
+            // 记录结果JSON的前200个字符，用于调试
+            String resultSummary = resultJson.length() > 200
+                ? resultJson.substring(0, 200) + "..."
+                : resultJson;
+            log.info("OCR处理结果: {}, 结果摘要: {}", taskId, resultSummary);
+
+            // 更新数据库
+            int updateCount = ocrTaskMapper.updateResult(taskId, resultJson, completedAt);
+            log.info("OCR任务处理成功: {}, 更新记录数: {}", taskId, updateCount);
+
+            // 验证更新是否成功
+            OcrTask updatedTask = ocrTaskMapper.selectByTaskId(taskId);
+            if (updatedTask != null) {
+                log.info("更新后的任务状态: {}, 完成时间: {}, 结果JSON长度: {}",
+                    updatedTask.getStatus(),
+                    updatedTask.getCompletedAt(),
+                    updatedTask.getResultJson() != null ? updatedTask.getResultJson().length() : 0);
+            } else {
+                log.warn("无法获取更新后的任务: {}", taskId);
+            }
 
             // 6. 清理临时文件（可选）
             // Files.deleteIfExists(filePath);

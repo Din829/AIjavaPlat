@@ -1,6 +1,32 @@
 import apiClient from './apiClient';
 import type { AxiosResponse } from 'axios';
-import { OcrTaskStatus, OcrUploadRequest, OcrTaskResponse } from '../types/ocr';
+
+// 直接在这里定义类型，避免导入问题
+export enum OcrTaskStatus {
+  PENDING = 'PENDING',
+  PROCESSING = 'PROCESSING',
+  COMPLETED = 'COMPLETED',
+  FAILED = 'FAILED'
+}
+
+export interface OcrUploadRequest {
+  usePypdf2?: boolean;
+  useDocling?: boolean;
+  useGemini?: boolean;
+  forceOcr?: boolean;
+  language?: string;
+}
+
+export interface OcrTaskResponse {
+  taskId: string;
+  status: OcrTaskStatus;
+  message?: string;
+  result?: any;
+  fileName?: string;
+  fileSize?: number;
+  createdAt?: string;
+  completedAt?: string;
+}
 
 /**
  * OCR服务
@@ -53,7 +79,7 @@ const ocrService = {
    */
   async getTaskStatus(taskId: string): Promise<OcrTaskResponse> {
     const response: AxiosResponse<OcrTaskResponse> = await apiClient.get(
-      `/api/ocr/status/${taskId}`
+      `/api/ocr/tasks/${taskId}/status`
     );
 
     return response.data;
@@ -66,7 +92,7 @@ const ocrService = {
    */
   async getTaskResult(taskId: string): Promise<OcrTaskResponse> {
     const response: AxiosResponse<OcrTaskResponse> = await apiClient.get(
-      `/api/ocr/result/${taskId}`
+      `/api/ocr/tasks/${taskId}`
     );
 
     return response.data;

@@ -1,7 +1,6 @@
 import { defineStore } from 'pinia';
-import ocrService from '../services/ocrService';
-import type { OcrUploadRequest, OcrTaskResponse } from '../types/ocr';
-import { OcrTaskStatus } from '../types/ocr';
+import ocrService, { OcrTaskStatus } from '../services/ocrService';
+import type { OcrUploadRequest, OcrTaskResponse } from '../services/ocrService';
 import { message } from '../services/messageService';
 
 /**
@@ -15,6 +14,7 @@ interface OcrState {
   isLoading: boolean;
   error: string | null;
   pollingInterval: number | null;
+  errorCount: number; // 添加错误计数属性
 }
 
 /**
@@ -28,8 +28,18 @@ export const useOcrStore = defineStore('ocr', {
     isProcessing: false,
     isLoading: false,
     error: null,
-    pollingInterval: null
+    pollingInterval: null,
+    errorCount: 0 // 初始化错误计数
   }),
+
+  // 确保在页面加载时重置状态
+  hydrate(storeState) {
+    // 强制重置处理状态，确保页面加载时不会显示加载指示器
+    storeState.isProcessing = false;
+    storeState.isUploading = false;
+    storeState.isLoading = false;
+    storeState.pollingInterval = null;
+  },
 
   getters: {
     /**
@@ -83,10 +93,34 @@ export const useOcrStore = defineStore('ocr', {
 
         // 上传文件
         const response = await ocrService.uploadFile(file, mergedOptions);
-        this.currentTask = response;
 
-        // 开始轮询任务状态
-        this.startPolling(response.taskId);
+        // 确保response有效且包含taskId
+        if (response && response.taskId) {
+          console.log('File uploaded successfully, setting currentTask:', response);
+          this.currentTask = response;
+
+          // 开始轮询任务状态
+          this.startPolling(response.taskId);
+        } else {
+          console.error('Invalid response from uploadFile:', response);
+          this.isProcessing = false;
+        }
+
+        // 立即尝试获取一次任务状态，以防任务已经完成
+        setTimeout(async () => {
+          try {
+            console.log('立即检查任务状态:', response.taskId);
+            await this.getTaskStatus(response.taskId);
+
+            // 如果任务已完成，获取结果
+            if (this.currentTask?.status === OcrTaskStatus.COMPLETED) {
+              console.log('任务已完成，获取结果');
+              await this.getTaskResult(response.taskId);
+            }
+          } catch (e) {
+            console.error('初始检查任务状态失败:', e);
+          }
+        }, 500); // 500毫秒后检查，给后端一点处理时间
 
         message.success('文件上传成功，正在处理中...');
         return response;
@@ -183,8 +217,17 @@ export const useOcrStore = defineStore('ocr', {
       // 先停止之前的轮询
       this.stopPolling();
 
-      // 开始新的轮询
-      this.isProcessing = true;
+      // 只有在有任务ID且任务状态为PENDING或PROCESSING时才设置isProcessing为true
+      if (taskId && this.currentTask &&
+          (this.currentTask.status === OcrTaskStatus.PENDING ||
+           this.currentTask.status === OcrTaskStatus.PROCESSING)) {
+        console.log('Setting isProcessing to true for task:', taskId);
+        this.isProcessing = true;
+      } else {
+        console.log('Not setting isProcessing to true, no valid task or status');
+        this.isProcessing = false;
+      }
+
       this.pollingInterval = window.setInterval(async () => {
         // 如果任务已完成或失败，停止轮询
         if (this.currentTask &&
@@ -194,9 +237,37 @@ export const useOcrStore = defineStore('ocr', {
           return;
         }
 
-        // 获取任务状态
-        await this.getTaskStatus(taskId);
-      }, 3000); // 每3秒轮询一次
+        try {
+          // 获取任务状态
+          await this.getTaskStatus(taskId);
+        } catch (error) {
+          console.error('轮询任务状态时发生错误:', error);
+
+          // 连续错误计数
+          this.errorCount = (this.errorCount || 0) + 1;
+
+          // 如果连续错误超过3次，停止轮询
+          if (this.errorCount >= 3) {
+            console.error('连续错误超过3次，停止轮询');
+            this.stopPolling();
+            // 确保currentTask不为null，并且包含必需的taskId字段
+            if (this.currentTask && this.currentTask.taskId) {
+              this.currentTask = {
+                ...this.currentTask,
+                status: OcrTaskStatus.FAILED,
+                message: '获取任务状态失败，请稍后重试'
+              };
+            } else {
+              // 如果currentTask为null或没有taskId，创建一个新的失败任务
+              this.currentTask = {
+                taskId: taskId, // 使用传入的taskId
+                status: OcrTaskStatus.FAILED,
+                message: '获取任务状态失败，请稍后重试'
+              };
+            }
+          }
+        }
+      }, 1000); // 每1秒轮询一次
     },
 
     /**
@@ -217,6 +288,12 @@ export const useOcrStore = defineStore('ocr', {
       this.stopPolling();
       this.currentTask = null;
       this.error = null;
+      this.errorCount = 0; // 重置错误计数
+      this.isProcessing = false;
+      this.isUploading = false;
+      this.isLoading = false;
+
+      console.log('OCR状态已完全重置');
     }
   }
 });
