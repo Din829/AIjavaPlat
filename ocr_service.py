@@ -21,9 +21,12 @@ import logging
 from typing import Dict, List, Any, Optional, Union
 from datetime import datetime
 from pathlib import Path
+import fitz # PyMuPDF
+from PIL import Image
+import io
 
 # FastAPI相关导入
-from fastapi import FastAPI, UploadFile, File, HTTPException, Query, BackgroundTasks
+from fastapi import FastAPI, UploadFile, File, HTTPException, Query, BackgroundTasks, Request, Form
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -158,6 +161,43 @@ logger.info(f"Using local cache directory: {os.path.abspath(LOCAL_CACHE_DIR)}")
 # 从环境变量获取Gemini API密钥
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyDFLyEYqgaC6plSFF5IjvQEW0FEug6o14o")
 
+# 定义可用的Gemini模型配置
+GEMINI_MODELS = {
+    "gemini-2.5-pro": {
+        "name": "models/gemini-2.5-pro-preview-05-06",
+        "display_name": "Gemini 2.5 Pro (最高质量)",
+        "description": "最强大的模型，适合复杂文档分析，但速度较慢",
+        "speed": "slow",
+        "quality": "highest"
+    },
+    "gemini-2.5-pro-preview-05-06": {
+        "name": "models/gemini-2.5-pro-preview-05-06",
+        "display_name": "Gemini 2.5 Pro Preview 05-06 (最佳OCR质量)",
+        "description": "专门优化用于OCR和图像文字识别的模型",
+        "speed": "slow",
+        "quality": "highest"
+    },
+    "gemini-1.5-pro": {
+        "name": "models/gemini-1.5-pro",
+        "display_name": "Gemini 1.5 Pro (平衡)",
+        "description": "平衡质量和速度的模型，适合大多数场景",
+        "speed": "medium",
+        "quality": "high"
+    },
+    "gemini-1.5-flash": {
+        "name": "models/gemini-1.5-flash",
+        "display_name": "Gemini 1.5 Flash (最快速度)",
+        "description": "最快的模型，适合快速处理，质量良好",
+        "speed": "fast",
+        "quality": "good"
+    }
+}
+
+# 设置默认模型（优先使用Flash模型以提升速度）
+DEFAULT_GEMINI_MODEL_KEY = "gemini-1.5-flash"
+DEFAULT_GEMINI_MODEL = None
+AVAILABLE_GEMINI_MODELS = []
+
 # 配置Gemini API
 if GEMINI_ENABLED:
     try:
@@ -171,16 +211,28 @@ if GEMINI_ENABLED:
             model_names = [m.name for m in models]
             logger.info(f"Available Gemini models: {model_names}")
 
+            # 检查哪些预定义模型可用
+            for key, config in GEMINI_MODELS.items():
+                if config["name"] in model_names:
+                    AVAILABLE_GEMINI_MODELS.append(key)
+                    logger.info(f"Model available: {key} -> {config['name']}")
+
             # 设置默认模型
-            DEFAULT_GEMINI_MODEL = "models/gemini-2.5-pro-preview-05-06"
-            if DEFAULT_GEMINI_MODEL not in model_names:
-                # 如果首选模型不可用，使用备选模型
+            if DEFAULT_GEMINI_MODEL_KEY in AVAILABLE_GEMINI_MODELS:
+                DEFAULT_GEMINI_MODEL = GEMINI_MODELS[DEFAULT_GEMINI_MODEL_KEY]["name"]
+            elif AVAILABLE_GEMINI_MODELS:
+                # 如果默认模型不可用，使用第一个可用模型
+                DEFAULT_GEMINI_MODEL_KEY = AVAILABLE_GEMINI_MODELS[0]
+                DEFAULT_GEMINI_MODEL = GEMINI_MODELS[DEFAULT_GEMINI_MODEL_KEY]["name"]
+            else:
+                # 如果没有预定义模型可用，使用备选模型
                 for model_name in ["models/gemini-1.5-pro", "models/gemini-1.5-flash", "models/gemini-pro"]:
                     if model_name in model_names:
                         DEFAULT_GEMINI_MODEL = model_name
                         break
 
             logger.info(f"Using default Gemini model: {DEFAULT_GEMINI_MODEL}")
+            logger.info(f"Available model keys: {AVAILABLE_GEMINI_MODELS}")
         except Exception as e:
             logger.warning(f"Failed to list available Gemini models: {e}")
             DEFAULT_GEMINI_MODEL = "models/gemini-pro"
@@ -191,6 +243,7 @@ else:
     DEFAULT_GEMINI_MODEL = None
 
 # --- 默认提示词 ---
+# 完整版提示词（用于高质量模型）
 DEFAULT_PDF_PROMPT = """
 请分析这个PDF文档，并提取以下信息：
 1. 文档的标题和主题
@@ -209,6 +262,19 @@ DEFAULT_PDF_PROMPT = """
     "tables": [{"table_title": "表格标题", "content": "表格内容"}],
     "images": [{"description": "图像描述"}],
     "translation": "文档内容的中文翻译（如果原文不是中文）"
+}
+"""
+
+# 简化版提示词（用于快速模型，专注核心任务）
+SIMPLIFIED_PDF_PROMPT = """
+请分析以下文档内容并提供简要总结：
+
+请以JSON格式返回：
+{
+    "title": "文档标题",
+    "summary": "文档主要内容摘要",
+    "key_points": ["关键点1", "关键点2", "关键点3"],
+    "language": "文档语言"
 }
 """
 
@@ -231,6 +297,19 @@ DEFAULT_JAPANESE_PDF_PROMPT = """
     "key_fields": [{"field_name": "名称", "field_value": "值"}],
     "tables": [{"table_title": "表格标题", "content": "表格内容"}],
     "images": [{"description": "图像描述"}],
+    "translation": "文档内容的中文翻译"
+}
+"""
+
+# 日语文档的简化提示词
+SIMPLIFIED_JAPANESE_PDF_PROMPT = """
+请分析以下日语文档内容并提供简要总结：
+
+请以JSON格式返回：
+{
+    "title": "文档标题",
+    "summary": "文档主要内容摘要",
+    "key_fields": [{"field_name": "名称", "field_value": "值"}],
     "translation": "文档内容的中文翻译"
 }
 """
@@ -318,6 +397,7 @@ def process_with_docling(file_path: str, force_ocr: bool = False) -> Dict[str, A
     Returns:
         包含提取文本和元数据的字典
     """
+    import os # 确保 os 在此函数作用域内可用，以解决 linter 可能的误报
     if not DOCLING_AVAILABLE:
         return {"error": "Docling not available"}
 
@@ -604,70 +684,116 @@ def process_with_docling(file_path: str, force_ocr: bool = False) -> Dict[str, A
             "conversion_time": conversion_time
         }
 
-        # 提取页面信息
+        # 使用正确的Docling API提取文本
+        # 首先尝试使用export_to_markdown获取完整文本
+        try:
+            full_text = document.export_to_markdown()
+            result["full_text"] = full_text
+            logger.info(f"Successfully extracted text using export_to_markdown, length: {len(full_text)}")
+        except Exception as e:
+            logger.warning(f"Failed to use export_to_markdown: {e}")
+            result["full_text"] = ""
+
+        # 如果export_to_markdown没有提取到文本，尝试其他方法
+        if not result["full_text"].strip():
+            try:
+                # 尝试使用export_to_text方法
+                if hasattr(document, 'export_to_text'):
+                    full_text = document.export_to_text()
+                    result["full_text"] = full_text
+                    logger.info(f"Successfully extracted text using export_to_text, length: {len(full_text)}")
+            except Exception as e:
+                logger.warning(f"Failed to use export_to_text: {e}")
+
+        # 如果仍然没有文本，尝试直接访问文档内容
+        if not result["full_text"].strip():
+            try:
+                # 尝试访问document.text属性
+                if hasattr(document, 'text'):
+                    full_text = document.text
+                    result["full_text"] = full_text
+                    logger.info(f"Successfully extracted text using document.text, length: {len(full_text)}")
+            except Exception as e:
+                logger.warning(f"Failed to use document.text: {e}")
+
+        # 尝试获取页面信息
+        result_pages = []
         all_text = []
+
+        # 检查文档是否有页面 - 修复页面访问问题
+        page_count = 0
         if hasattr(document, 'pages'):
-            pages = document.pages
-            result["page_count"] = len(pages)
-            logger.info(f"Document has {len(pages)} pages")
+            try:
+                # 尝试获取页面数量
+                if isinstance(document.pages, (list, tuple)):
+                    page_count = len(document.pages)
+                elif hasattr(document.pages, '__len__'):
+                    page_count = len(document.pages)
+                else:
+                    # 如果pages不是列表，可能是页面数量
+                    page_count = int(document.pages) if isinstance(document.pages, (int, float)) else 0
 
-            # 遍历页面
-            result_pages = []
-            for i, page in enumerate(pages):
-                page_data = {
-                    "page_number": i+1,
-                    "elements": []
-                }
+                result["page_count"] = page_count
+                logger.info(f"Document has {page_count} pages")
+            except Exception as e:
+                logger.warning(f"Failed to get page count: {e}")
+                page_count = 1
+                result["page_count"] = 1
 
-                # 提取页面元素
-                if hasattr(page, 'elements'):
-                    elements = page.elements
-                    logger.info(f"Page {i+1} has {len(elements)} elements")
+        # 如果没有提取到文本且有页面信息，尝试从页面元素中提取
+        if not result["full_text"].strip() and page_count > 0:
+            try:
+                # 尝试从文档的内部结构中提取文本
+                if hasattr(document, '_elements') and document._elements:
+                    elements_text = []
+                    for element in document._elements:
+                        if hasattr(element, 'text') and element.text:
+                            elements_text.append(element.text)
+                    if elements_text:
+                        result["full_text"] = "\n".join(elements_text)
+                        logger.info(f"Successfully extracted text from document elements, length: {len(result['full_text'])}")
 
-                    # 提取页面文本
-                    page_text_parts = []
+                # 尝试从文档的其他属性中提取文本
+                elif hasattr(document, 'content') and document.content:
+                    result["full_text"] = str(document.content)
+                    logger.info(f"Successfully extracted text from document.content, length: {len(result['full_text'])}")
 
-                    # 遍历元素
-                    for j, elem in enumerate(elements):
-                        elem_data = {
-                            "element_id": f"elem_{i+1}_{j+1}",
-                            "element_type": "unknown"
-                        }
+            except Exception as e:
+                logger.warning(f"Failed to extract text from document elements: {e}")
 
-                        # 提取元素类型
-                        if hasattr(elem, 'type'):
-                            elem_type = elem.type
-                            if hasattr(elem_type, 'name'):
-                                elem_data["element_type"] = elem_type.name
-                            elif hasattr(elem_type, 'value'):
-                                elem_data["element_type"] = elem_type.value
+        # 创建页面结构
+        if page_count > 0:
+            # 如果有完整文本，尝试按页面分割
+            if result["full_text"].strip():
+                text_per_page = len(result["full_text"]) // page_count if page_count > 0 else len(result["full_text"])
+                for page_num in range(page_count):
+                    start_idx = page_num * text_per_page
+                    end_idx = (page_num + 1) * text_per_page if page_num < page_count - 1 else len(result["full_text"])
+                    page_text = result["full_text"][start_idx:end_idx] if start_idx < len(result["full_text"]) else ""
 
-                        # 提取元素文本
-                        if hasattr(elem, 'text'):
-                            elem_data["text"] = elem.text
-                            page_text_parts.append(elem.text)
-                        elif hasattr(elem, 'texts'):
-                            texts = elem.texts
-                            text_parts = []
-                            for text_run in texts:
-                                if hasattr(text_run, 'text'):
-                                    text_parts.append(text_run.text)
-                            if text_parts:
-                                elem_data["text"] = "".join(text_parts)
-                                page_text_parts.append("".join(text_parts))
+                    result_pages.append({
+                        "page_number": page_num + 1,
+                        "text": page_text,
+                        "elements": []
+                    })
+            else:
+                # 没有文本，创建空页面
+                for page_num in range(page_count):
+                    result_pages.append({
+                        "page_number": page_num + 1,
+                        "text": "",
+                        "elements": []
+                    })
+        else:
+            # 没有页面信息，创建单页结构
+            result["page_count"] = 1
+            result_pages.append({
+                "page_number": 1,
+                "text": result["full_text"],
+                "elements": []
+            })
 
-                        page_data["elements"].append(elem_data)
-
-                    # 合并页面文本
-                    page_data["text"] = "\n".join(page_text_parts)
-                    all_text.append(page_data["text"])
-
-                result_pages.append(page_data)
-
-            result["pages"] = result_pages
-
-        # 添加完整文本
-        result["full_text"] = "\n".join(all_text)
+        result["pages"] = result_pages
 
         # ---- START DEBUG PRINTS ----
         logger.info(f"Docling Result (inside process_with_docling): {result}")
@@ -698,6 +824,230 @@ def process_with_docling(file_path: str, force_ocr: bool = False) -> Dict[str, A
     except Exception as e:
         logger.exception(f"Error processing file with Docling: {e}")
         return {"error": f"Error processing file with Docling: {str(e)}"}
+
+# --- 新增优化的Gemini处理函数 ---
+
+def get_prompt_for_model(model_key: str, language: str = "auto") -> str:
+    """
+    根据模型类型和语言选择合适的提示词
+
+    Args:
+        model_key: 模型键值 (gemini-2.5-pro, gemini-1.5-pro, gemini-1.5-flash)
+        language: 文档语言
+
+    Returns:
+        合适的提示词
+    """
+    # 判断是否使用简化提示词（Flash模型使用简化版本）
+    use_simplified = model_key == "gemini-1.5-flash"
+
+    if language.lower() == "ja" or language.lower() == "japanese":
+        return SIMPLIFIED_JAPANESE_PDF_PROMPT if use_simplified else DEFAULT_JAPANESE_PDF_PROMPT
+    else:
+        return SIMPLIFIED_PDF_PROMPT if use_simplified else DEFAULT_PDF_PROMPT
+
+def truncate_text(text: str, max_length: int = 10000) -> str:
+    """
+    截断文本到指定长度，避免超长输入
+
+    Args:
+        text: 原始文本
+        max_length: 最大长度
+
+    Returns:
+        截断后的文本
+    """
+    if len(text) <= max_length:
+        return text
+
+    # 截断并添加省略号
+    truncated = text[:max_length]
+    # 尝试在单词边界截断
+    last_space = truncated.rfind(' ')
+    if last_space > max_length * 0.8:  # 如果最后一个空格位置合理
+        truncated = truncated[:last_space]
+
+    return truncated + "...\n[文本已截断]"
+
+def analyze_text_with_gemini_sync(text: str, model_key: str = None, language: str = "auto") -> Dict[str, Any]:
+    """
+    使用Gemini分析文本内容（同步版本，用于非异步环境）
+
+    Args:
+        text: 要分析的文本内容
+        model_key: 使用的模型键值，如果为None则使用默认模型
+        language: 文档语言
+
+    Returns:
+        包含Gemini分析结果的字典
+    """
+    if not GEMINI_ENABLED:
+        return {"error": "Gemini API not available"}
+
+    try:
+        # 确定使用的模型
+        if model_key and model_key in GEMINI_MODELS:
+            model_name = GEMINI_MODELS[model_key]["name"]
+            logger.info(f"Using specified model: {model_key} -> {model_name}")
+        else:
+            model_name = DEFAULT_GEMINI_MODEL
+            model_key = DEFAULT_GEMINI_MODEL_KEY
+            logger.info(f"Using default model: {model_key} -> {model_name}")
+
+        # 截断文本以避免超长输入
+        truncated_text = truncate_text(text)
+        logger.info(f"Text length: {len(text)} -> {len(truncated_text)} characters")
+
+        # 获取合适的提示词
+        prompt = get_prompt_for_model(model_key, language)
+
+        # 创建完整的输入
+        full_input = f"{prompt}\n\n文档内容：\n{truncated_text}"
+
+        # 使用Gemini处理文本
+        model = genai.GenerativeModel(model_name)
+
+        logger.info(f"Starting Gemini analysis with model {model_name}")
+        start_time = datetime.now()
+
+        response = model.generate_content(
+            full_input,
+            generation_config={
+                "temperature": 0.2,
+                "top_p": 0.8,
+                "top_k": 40,
+                "max_output_tokens": 4096,  # 减少输出长度以提升速度
+            }
+        )
+
+        end_time = datetime.now()
+        processing_time = (end_time - start_time).total_seconds()
+        logger.info(f"Gemini analysis completed in {processing_time:.2f} seconds")
+
+        # 解析响应
+        result = {
+            "processed_at": datetime.now().isoformat(),
+            "model_used": model_name,
+            "model_key": model_key,
+            "processing_time": processing_time,
+            "text_length": len(truncated_text),
+            "gemini_response": response.text
+        }
+
+        # 尝试解析JSON响应
+        try:
+            # 查找JSON部分
+            json_start = response.text.find('{')
+            json_end = response.text.rfind('}') + 1
+            if json_start >= 0 and json_end > json_start:
+                json_str = response.text[json_start:json_end]
+                parsed_json = json.loads(json_str)
+                result["parsed_result"] = parsed_json
+
+                # 提取关键信息
+                for key in ["title", "document_type", "language", "summary", "key_points", "translation", "key_fields"]:
+                    if key in parsed_json:
+                        result[key] = parsed_json[key]
+
+        except Exception as e:
+            logger.warning(f"Failed to parse JSON from Gemini response: {e}")
+            result["parsed_result"] = None
+
+        return result
+
+    except Exception as e:
+        logger.exception(f"Error analyzing text with Gemini: {e}")
+        return {"error": f"Error analyzing text with Gemini: {str(e)}"}
+
+async def analyze_text_with_gemini(text: str, model_key: str = None, language: str = "auto") -> Dict[str, Any]:
+    """
+    使用Gemini分析文本内容（优化版本，只传输文本）
+
+    Args:
+        text: 要分析的文本内容
+        model_key: 使用的模型键值，如果为None则使用默认模型
+        language: 文档语言
+
+    Returns:
+        包含Gemini分析结果的字典
+    """
+    if not GEMINI_ENABLED:
+        return {"error": "Gemini API not available"}
+
+    try:
+        # 确定使用的模型
+        if model_key and model_key in GEMINI_MODELS:
+            model_name = GEMINI_MODELS[model_key]["name"]
+            logger.info(f"Using specified model: {model_key} -> {model_name}")
+        else:
+            model_name = DEFAULT_GEMINI_MODEL
+            model_key = DEFAULT_GEMINI_MODEL_KEY
+            logger.info(f"Using default model: {model_key} -> {model_name}")
+
+        # 截断文本以避免超长输入
+        truncated_text = truncate_text(text)
+        logger.info(f"Text length: {len(text)} -> {len(truncated_text)} characters")
+
+        # 获取合适的提示词
+        prompt = get_prompt_for_model(model_key, language)
+
+        # 创建完整的输入
+        full_input = f"{prompt}\n\n文档内容：\n{truncated_text}"
+
+        # 使用Gemini处理文本
+        model = genai.GenerativeModel(model_name)
+
+        logger.info(f"Starting Gemini analysis with model {model_name}")
+        start_time = datetime.now()
+
+        response = model.generate_content(
+            full_input,
+            generation_config={
+                "temperature": 0.2,
+                "top_p": 0.8,
+                "top_k": 40,
+                "max_output_tokens": 4096,  # 减少输出长度以提升速度
+            }
+        )
+
+        end_time = datetime.now()
+        processing_time = (end_time - start_time).total_seconds()
+        logger.info(f"Gemini analysis completed in {processing_time:.2f} seconds")
+
+        # 解析响应
+        result = {
+            "processed_at": datetime.now().isoformat(),
+            "model_used": model_name,
+            "model_key": model_key,
+            "processing_time": processing_time,
+            "text_length": len(truncated_text),
+            "gemini_response": response.text
+        }
+
+        # 尝试解析JSON响应
+        try:
+            # 查找JSON部分
+            json_start = response.text.find('{')
+            json_end = response.text.rfind('}') + 1
+            if json_start >= 0 and json_end > json_start:
+                json_str = response.text[json_start:json_end]
+                parsed_json = json.loads(json_str)
+                result["parsed_result"] = parsed_json
+
+                # 提取关键信息
+                for key in ["title", "document_type", "language", "summary", "key_points", "translation", "key_fields"]:
+                    if key in parsed_json:
+                        result[key] = parsed_json[key]
+
+        except Exception as e:
+            logger.warning(f"Failed to parse JSON from Gemini response: {e}")
+            result["parsed_result"] = None
+
+        return result
+
+    except Exception as e:
+        logger.exception(f"Error analyzing text with Gemini: {e}")
+        return {"error": f"Error analyzing text with Gemini: {str(e)}"}
 
 def process_with_gemini(pdf_path: str, prompt: Optional[str] = None, language: str = "auto") -> Dict[str, Any]:
     """
@@ -865,7 +1215,8 @@ def process_with_gemini(pdf_path: str, prompt: Optional[str] = None, language: s
 
 def process_pdf(file_path: str, use_pypdf2: bool = True, use_docling: bool = True,
                 use_gemini: bool = True, force_ocr: bool = False,
-                gemini_prompt: Optional[str] = None, language: str = "auto") -> Dict[str, Any]:
+                gemini_prompt: Optional[str] = None, language: str = "auto",
+                gemini_model: str = "gemini-1.5-flash") -> Dict[str, Any]:
     """
     综合处理PDF文件，结合PyPDF2、Docling和Gemini的能力
 
@@ -877,6 +1228,7 @@ def process_pdf(file_path: str, use_pypdf2: bool = True, use_docling: bool = Tru
         force_ocr: 是否强制使用OCR（仅适用于Docling）
         gemini_prompt: 可选的Gemini提示词
         language: 文档语言，用于选择合适的提示词
+        gemini_model: Gemini模型选择
 
     Returns:
         包含处理结果的字典
@@ -965,11 +1317,23 @@ def process_pdf(file_path: str, use_pypdf2: bool = True, use_docling: bool = Tru
         else:
             logger.warning(f"Docling processing failed: {docling_result['error']}")
 
-    # 使用Gemini处理
+    # 使用Gemini处理（优化版本：只传输文本内容）
     gemini_result = None
     if use_gemini and GEMINI_ENABLED:
-        logger.info(f"Processing with Gemini: {file_path}")
-        gemini_result = process_with_gemini(file_path, gemini_prompt, language)
+        logger.info(f"Processing with Gemini (optimized): {file_path}")
+
+        # 获取已提取的文本内容
+        extracted_text = result["full_text"]
+        if extracted_text:
+            # 使用优化的文本分析函数（同步版本）
+            gemini_result = analyze_text_with_gemini_sync(
+                text=extracted_text,
+                model_key=gemini_model,
+                language=language
+            )
+        else:
+            logger.warning("No text extracted for Gemini analysis, skipping Gemini processing")
+            gemini_result = {"error": "No text available for analysis"}
 
         if "error" not in gemini_result:
             # 创建Gemini分析结果
@@ -1151,15 +1515,142 @@ def process_pdf(file_path: str, use_pypdf2: bool = True, use_docling: bool = Tru
     return result
 
 
+async def process_with_gemini_vision_ocr(pdf_path: str, language: str, model_name: str) -> Dict[str, Any]:
+    """
+    使用Gemini Vision OCR处理PDF文件（逐页发送图片）。
+
+    Args:
+        pdf_path: PDF文件路径。
+        language: 提取语言 (传递给Gemini的prompt，可以是 'auto')。
+        model_name: 使用的Gemini模型名称。
+
+    Returns:
+        包含提取文本和页码的字典。
+    """
+    if not GEMINI_ENABLED:
+        return {"error": "Gemini AI not enabled or API key not configured."}
+
+    all_text: List[str] = []
+    doc = None
+    try:
+        # 从文件路径读取字节，因为fitz.open(filename=...)在某些环境下处理Unicode路径可能存在问题
+        with open(pdf_path, "rb") as f:
+            pdf_content_bytes = f.read()
+        
+        doc = fitz.open(stream=pdf_content_bytes, filetype="pdf")
+        
+        model = genai.GenerativeModel(model_name) # 使用传入的模型名称
+        
+        # 构建基础的prompt，可以根据language参数调整
+        # 注意：Gemini 1.5 Flash/Pro 的 Vision 模型通常不需要非常复杂的 OCR prompt
+        # "Extract text from this image." 配合 "auto" language 通常足够
+        prompt_parts = [f"Extract all text from this image. Document language is {language if language != 'auto' else 'any language'}."]
+
+        for page_num in range(len(doc)):
+            page = doc.load_page(page_num)
+            # 将PDF页面转换为高质量图像 (PNG)
+            # 增加DPI以提高图像质量，有助于OCR识别，但会增加处理时间和图像大小
+            pix = page.get_pixmap(dpi=300) 
+            img_bytes = pix.tobytes("png")
+            img_pil = Image.open(io.BytesIO(img_bytes))
+
+            logger.info(f"向Gemini发送第 {page_num + 1}/{len(doc)} 页进行OCR处理...")
+            
+            current_page_text_parts = []
+            try:
+                # 为Gemini API调用设置超时 (例如120秒)
+                response = model.generate_content(
+                    prompt_parts + [img_pil],
+                    request_options={"timeout": 120} 
+                )
+
+                if not response.candidates:
+                    logger.warning(f"第 {page_num + 1} 页 Gemini 响应中没有候选内容 (no candidates)。")
+                    continue # 跳过此页
+
+                candidate = response.candidates[0]
+                
+                # candidate.finish_reason 是 google.generativeai.types.Candidate.FinishReason 枚举
+                # .value: STOP=1, MAX_TOKENS=2, SAFETY=3, RECITATION=4, OTHER=5
+                
+                if candidate.finish_reason.value == 1: # STOP - 正常完成
+                    if candidate.content and candidate.content.parts:
+                        for part in candidate.content.parts:
+                            if hasattr(part, "text") and part.text:
+                                current_page_text_parts.append(part.text)
+                        
+                        if current_page_text_parts:
+                            page_text_content = "".join(current_page_text_parts)
+                            all_text.append(page_text_content)
+                            logger.info(f"成功处理第 {page_num + 1} 页，提取文本长度: {len(page_text_content)}")
+                        else:
+                            logger.warning(f"第 {page_num + 1} 页 Gemini 响应状态为 STOP，但未找到文本内容。 Parts: {[p.to_dict() for p in candidate.content.parts] if candidate.content else 'N/A'}")
+                    else:
+                        logger.warning(f"第 {page_num + 1} 页 Gemini 响应状态为 STOP，但 Candidate.content 或 Candidate.content.parts 为空。")
+                
+                elif candidate.finish_reason.value == 2: # MAX_TOKENS
+                    logger.warning(
+                        f"第 {page_num + 1} 页 Gemini 处理因 MAX_TOKENS (输出Token达到上限) 而结束。将尝试提取部分文本。"
+                        f"Finish Reason: {candidate.finish_reason.name} (Value: {candidate.finish_reason.value}). "
+                        f"Safety Ratings: {[str(rating) for rating in candidate.safety_ratings] if candidate.safety_ratings else 'N/A'}"
+                    )
+                    if candidate.content and candidate.content.parts:
+                        for part in candidate.content.parts:
+                            if hasattr(part, "text") and part.text:
+                                current_page_text_parts.append(part.text)
+                        if current_page_text_parts:
+                            partial_text = "".join(current_page_text_parts)
+                            all_text.append(partial_text) # 添加部分文本
+                            logger.info(f"从第 {page_num + 1} 页提取到部分文本 (MAX_TOKENS)，长度: {len(partial_text)}")
+                        else:
+                            logger.warning(f"第 {page_num + 1} 页因 MAX_TOKENS 结束，但未在响应的 parts 中找到部分文本。")
+                
+                else: # 其他非正常结束原因 (SAFETY, RECITATION, OTHER, UNSPECIFIED)
+                    logger.warning(
+                        f"第 {page_num + 1} 页 Gemini 处理未正常完成。将跳过此页的文本提取。"
+                        f"Finish Reason: {candidate.finish_reason.name} (Value: {candidate.finish_reason.value}). "
+                        f"Safety Ratings: {[str(rating) for rating in candidate.safety_ratings] if candidate.safety_ratings else 'N/A'}"
+                    )
+
+            except AttributeError as ae:
+                logger.error(f"处理第 {page_num + 1} 页的Gemini响应时发生 AttributeError (API响应结构可能不符合预期): {ae}", exc_info=True)
+                if 'response' in locals() and response:
+                     logger.error(f"原始 Gemini 响应 (第 {page_num + 1} 页): {response}")
+            except Exception as e_page:
+                logger.error(f"处理第 {page_num + 1} 页时发生错误: {e_page}", exc_info=True)
+        
+        final_extracted_text = "\n\n".join(all_text) # 使用两个换行符分隔页面文本
+        logger.info(f"Gemini Vision OCR 完成，总提取文本长度: {len(final_extracted_text)}, 总页数: {len(doc)}")
+        return {"extracted_text": final_extracted_text, "page_count": len(doc), "warning": "使用Gemini Vision OCR提取的文本"}
+
+    except RuntimeError as e_pymupdf: # Catch RuntimeError which PyMuPDF often uses for internal errors
+        logger.error(f"PyMuPDF runtime error during Vision OCR: {e_pymupdf}", exc_info=True)
+        # Check if specific MuPDF error strings are in the message if needed
+        if "FZ_ERROR_GENERIC" in str(e_pymupdf):
+            return {"error": f"PyMuPDF generic error: {e_pymupdf}"}
+        elif "FZ_ERROR_TRYLATER" in str(e_pymupdf):
+            return {"error": f"PyMuPDF try later error: {e_pymupdf}"}
+        return {"error": f"PyMuPDF runtime error: {e_pymupdf}"} # Default return for other RuntimeErrors from PyMuPDF
+    except Exception as e:
+        logger.error(f"使用Gemini Vision OCR处理PDF '{pdf_path}' 时发生未知错误: {e}", exc_info=True)
+        return {"error": f"An unexpected error occurred during Gemini Vision OCR processing: {e}"}
+    finally:
+        if doc:
+            doc.close()
+
+
 # --- API Endpoints ---
 @app.post("/api/ocr/upload", response_model=OcrResponse)
 async def ocr_upload(
+    request: Request, # 新增 Request 对象
     file: UploadFile = File(...),
-    use_pypdf2: bool = True,
-    use_docling: bool = True,
-    use_gemini: bool = True,
-    force_ocr: bool = False,
-    language: str = "auto"
+    use_pypdf2: str = Form("true"), # 从表单接收
+    use_docling: str = Form("true"), # 从表单接收
+    use_gemini: str = Form("true"),   # 从表单接收
+    force_ocr: str = Form("false"),  # 从表单接收
+    language: str = Form("auto"),    # 从表单接收
+    gemini_model: str = Form("gemini-1.5-flash"),  # 从表单接收
+    use_vision_ocr: str = Form("false")  # 从表单接收，这是关键参数
 ):
     """
     接收文件上传，使用多层处理策略进行OCR和文档结构解析，
@@ -1172,146 +1663,216 @@ async def ocr_upload(
         use_gemini: 是否使用Gemini处理
         force_ocr: 是否强制使用OCR（仅适用于Docling）
         language: 文档语言，用于选择合适的提示词
+        gemini_model: Gemini模型选择 (gemini-2.5-pro, gemini-1.5-pro, gemini-1.5-flash)
 
     Returns:
         OcrResponse: 包含处理结果的结构化JSON
     """
     temp_file_path = None
     try:
-        # 1. 保存上传文件到临时位置
-        # 清理文件名，防止目录遍历或其他攻击
+        # 记录原始表单数据
+        try:
+            form_data = await request.form()
+            logger.info(f"Received /api/ocr/upload request. Raw form data: {form_data}")
+            if "use_vision_ocr" in form_data:
+                logger.info(f"Raw form data 'use_vision_ocr': {form_data['use_vision_ocr']}")
+            else:
+                logger.warning("'use_vision_ocr' not found in raw form data.")
+            logger.info(f"Parsed parameters: file_name='{file.filename}', use_pypdf2='{use_pypdf2}', use_docling='{use_docling}', use_gemini='{use_gemini}', force_ocr='{force_ocr}', language='{language}', gemini_model='{gemini_model}', use_vision_ocr (parameter)='{use_vision_ocr}'")
+        except Exception as e:
+            logger.error(f"Error logging form data: {e}")
+
+        # 将字符串参数转换为boolean
+        use_pypdf2_bool = use_pypdf2.lower() in ("true", "1", "yes", "on")
+        use_docling_bool = use_docling.lower() in ("true", "1", "yes", "on")
+        use_gemini_bool = use_gemini.lower() in ("true", "1", "yes", "on")
+        force_ocr_bool = force_ocr.lower() in ("true", "1", "yes", "on")
+        use_vision_ocr_bool = use_vision_ocr.lower() in ("true", "1", "yes", "on")
+
+        logger.info(f"转换后的boolean参数: use_pypdf2={use_pypdf2_bool}, use_docling={use_docling_bool}, use_gemini={use_gemini_bool}, force_ocr={force_ocr_bool}, use_vision_ocr={use_vision_ocr_bool}")
+
         safe_filename = "".join(c if c.isalnum() or c in ('.', '_', '-') else '_' for c in file.filename)
         temp_file_path = os.path.join(UPLOAD_DIR, f"{uuid.uuid4().hex}_{safe_filename}")
 
         with open(temp_file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         logger.info(f"File '{file.filename}' uploaded to '{temp_file_path}'")
-
-        # 2. 处理PDF文件
         logger.info(f"Processing PDF file: {temp_file_path}")
-        result = process_pdf(
-            file_path=temp_file_path,
-            use_pypdf2=use_pypdf2 and PYPDF2_AVAILABLE,
-            use_docling=use_docling and DOCLING_AVAILABLE,
-            use_gemini=use_gemini and GEMINI_ENABLED,
-            force_ocr=force_ocr,
-            language=language
-        )
 
-        # 3. 创建响应
-        # 创建处理信息
-        processing_info = ProcessingInfo(
-            pypdf2_used=result["processing_info"]["pypdf2_used"],
-            docling_used=result["processing_info"]["docling_used"],
-            gemini_used=result["processing_info"]["gemini_used"],
-            force_ocr_used=result["processing_info"]["force_ocr_used"],
-            processing_time_seconds=result["processing_info"]["processing_time_seconds"],
-            status=result["processing_info"]["status"],
-            error_message=result["processing_info"].get("error_message")
-        )
+        if use_vision_ocr_bool:
+            vision_start_time = datetime.now()
+            result_vision = await process_with_gemini_vision_ocr(temp_file_path, language, gemini_model)
+            vision_end_time = datetime.now()
+            vision_processing_time = (vision_end_time - vision_start_time).total_seconds()
 
-        # 创建文档元数据
-        document_metadata = DocumentMetadata(
-            original_filename=result["document_metadata"]["original_filename"],
-            processed_at=result["document_metadata"]["processed_at"],
-            page_count=result["document_metadata"].get("page_count"),
-            source_format=result["document_metadata"].get("source_format"),
-            language=result["document_metadata"].get("language"),
-            title=result["document_metadata"].get("title"),
-            author=result["document_metadata"].get("author"),
-            creation_date=result["document_metadata"].get("creation_date")
-        )
+            if "error" in result_vision:
+                logger.error(f"Gemini Vision OCR processing failed: {result_vision['error']}")
+                error_processing_info = ProcessingInfo(
+                    pypdf2_used=False,
+                    docling_used=False,
+                    gemini_used=True, # Attempted Gemini Vision
+                    force_ocr_used=True, # Vision is inherently OCR
+                    status="error",
+                    error_message=str(result_vision["error"]),
+                    processing_time_seconds=vision_processing_time
+                )
+                error_document_metadata = DocumentMetadata(
+                    original_filename=safe_filename,
+                    processed_at=datetime.now().isoformat()
+                )
+                return OcrResponse(
+                    document_metadata=error_document_metadata,
+                    processing_info=error_processing_info,
+                    pages=[], full_text="", tables=[], images=[], gemini_analysis=None
+                )
+            else:
+                logger.info("Gemini Vision OCR successful.")
+                processing_info_vision = ProcessingInfo(
+                    pypdf2_used=False,
+                    docling_used=False,
+                    gemini_used=True,
+                    force_ocr_used=True,
+                    processing_time_seconds=vision_processing_time,
+                    status="success",
+                    error_message=result_vision.get("warning")
+                )
+                document_metadata_vision = DocumentMetadata(
+                    original_filename=safe_filename,
+                    processed_at=datetime.now().isoformat(),
+                    page_count=result_vision.get("page_count")
+                )
+                extracted_text_vision = result_vision.get("extracted_text", "")
+                page_count_vision = result_vision.get("page_count", 0)
+                pages_content_vision = []
 
-        # 创建页面内容
-        pages = []
-        for page_data in result["pages"]:
-            page = PageContent(
-                page_number=page_data["page_number"],
-                text=page_data["text"],
-                tables=page_data.get("tables", []),
-                images=page_data.get("images", [])
+                if extracted_text_vision and page_count_vision > 0:
+                    # Try to split by the delimiter used in process_with_gemini_vision_ocr
+                    page_texts_split = extracted_text_vision.split("\n\n") 
+                    if len(page_texts_split) == page_count_vision:
+                        for i, p_text in enumerate(page_texts_split):
+                            pages_content_vision.append(PageContent(page_number=i + 1, text=p_text))
+                    else:
+                        logger.warning(f"Vision OCR: Page text split count ({len(page_texts_split)}) differs from page_count ({page_count_vision}). Creating a single page entry with all text.")
+                        pages_content_vision.append(PageContent(page_number=1, text=extracted_text_vision))
+                elif extracted_text_vision: # Has text but no page_count or page_count is 0
+                    pages_content_vision.append(PageContent(page_number=1, text=extracted_text_vision))
+                
+                return OcrResponse(
+                    document_metadata=document_metadata_vision,
+                    processing_info=processing_info_vision,
+                    pages=pages_content_vision,
+                    full_text=extracted_text_vision,
+                    tables=[], images=[], gemini_analysis=None
+                )
+        else: # Standard processing path (use_vision_ocr_bool is False)
+            result_standard = process_pdf(
+                file_path=temp_file_path,
+                use_pypdf2=use_pypdf2_bool and PYPDF2_AVAILABLE,
+                use_docling=use_docling_bool and DOCLING_AVAILABLE,
+                use_gemini=use_gemini_bool and GEMINI_ENABLED,
+                force_ocr=force_ocr_bool,
+                language=language,
+                gemini_model=gemini_model
             )
-            pages.append(page)
 
-        # 创建Gemini分析结果
-        gemini_analysis = None
-        if "gemini_analysis" in result:
-            gemini_data = result["gemini_analysis"]
-            gemini_analysis = GeminiAnalysis(
-                summary=gemini_data.get("summary"),
-                key_points=gemini_data.get("key_points", []),
-                structured_data=gemini_data.get("structured_data"),
-                translation=gemini_data.get("translation"),
-                raw_response=gemini_data.get("raw_response")
+            if "error" in result_standard or "processing_info" not in result_standard : # Check for error or missing critical structure
+                error_msg = result_standard.get("error", "Unknown error during standard processing or malformed result.")
+                if "processing_info" not in result_standard:
+                     error_msg += " (Result missing 'processing_info')"
+                logger.error(f"Standard PDF processing failed or returned malformed result: {error_msg}")
+                
+                # Attempt to get processing time if available, otherwise None
+                std_proc_time = result_standard.get("processing_info", {}).get("processing_time_seconds")
+
+                error_processing_info = ProcessingInfo(
+                    pypdf2_used=use_pypdf2_bool and PYPDF2_AVAILABLE,
+                    docling_used=use_docling_bool and DOCLING_AVAILABLE,
+                    gemini_used=use_gemini_bool and GEMINI_ENABLED,
+                    force_ocr_used=force_ocr_bool,
+                    status="error",
+                    error_message=str(error_msg),
+                    processing_time_seconds=std_proc_time
+                )
+                error_document_metadata = DocumentMetadata(
+                    original_filename=safe_filename,
+                    processed_at=datetime.now().isoformat(),
+                    page_count=result_standard.get("document_metadata", {}).get("page_count")
+                )
+                return OcrResponse(
+                    document_metadata=error_document_metadata,
+                    processing_info=error_processing_info,
+                    pages=[], full_text=result_standard.get("full_text", ""), tables=[], images=[], gemini_analysis=None
+                )
+
+            # Standard success path: result_standard is valid and from process_pdf
+            processing_info = ProcessingInfo(
+                pypdf2_used=result_standard["processing_info"]["pypdf2_used"],
+                docling_used=result_standard["processing_info"]["docling_used"],
+                gemini_used=result_standard["processing_info"]["gemini_used"],
+                force_ocr_used=result_standard["processing_info"]["force_ocr_used"],
+                processing_time_seconds=result_standard["processing_info"]["processing_time_seconds"],
+                status=result_standard["processing_info"]["status"],
+                error_message=result_standard["processing_info"].get("error_message")
             )
+            document_metadata = DocumentMetadata(
+                original_filename=result_standard["document_metadata"]["original_filename"],
+                processed_at=result_standard["document_metadata"]["processed_at"],
+                page_count=result_standard["document_metadata"].get("page_count"),
+                source_format=result_standard["document_metadata"].get("source_format"),
+                language=result_standard["document_metadata"].get("language"),
+                title=result_standard["document_metadata"].get("title"),
+                author=result_standard["document_metadata"].get("author"),
+                creation_date=result_standard["document_metadata"].get("creation_date")
+            )
+            pages = []
+            for page_data in result_standard.get("pages", []): # Use .get for safety
+                page = PageContent(
+                    page_number=page_data["page_number"],
+                    text=page_data.get("text", ""), # Use .get for safety
+                    tables=page_data.get("tables", []),
+                    images=page_data.get("images", [])
+                )
+                pages.append(page)
 
-        # 处理表格数据
-        tables = []
-        for table in result.get("tables", []):
-            # 确保raw_text是字符串
-            if "raw_text" in table and not isinstance(table["raw_text"], str):
+            gemini_analysis = None
+            if "gemini_analysis" in result_standard and result_standard["gemini_analysis"]:
+                gemini_data = result_standard["gemini_analysis"]
+                gemini_analysis = GeminiAnalysis(
+                    summary=gemini_data.get("summary"),
+                    key_points=gemini_data.get("key_points", []),
+                    structured_data=gemini_data.get("structured_data"),
+                    translation=gemini_data.get("translation"),
+                    raw_response=gemini_data.get("raw_response")
+                )
+            tables = []
+            for table_data in result_standard.get("tables", []): # Use .get for safety
+                # Ensure raw_text is string, rows is list of lists
+                # (existing robust conversion logic for tables in process_pdf and previous versions of ocr_upload can be reused or adapted here if needed)
+                # For brevity, direct assignment, assuming process_pdf returns valid TableInfo-like dicts
                 try:
-                    table["raw_text"] = json.dumps(table["raw_text"])
-                except Exception as e:
-                    logger.warning(f"Failed to convert table raw_text to JSON string: {e}")
-                    table["raw_text"] = str(table["raw_text"])
+                    # Ensure raw_text is string
+                    if "raw_text" in table_data and not isinstance(table_data["raw_text"], str):
+                        table_data["raw_text"] = json.dumps(table_data["raw_text"])
+                    # Ensure rows is list of lists
+                    if "rows" in table_data and (not isinstance(table_data["rows"], list) or (table_data["rows"] and not isinstance(table_data["rows"][0], list))):
+                        # Basic fallback if rows format is not list of lists
+                        logger.warning(f"Table rows for table '{table_data.get('table_id')}' not in expected list-of-lists format. Setting to empty list.")
+                        table_data["rows"] = []
 
-            # 确保rows是列表的列表格式
-            if "rows" in table:
-                # 如果rows是字典列表或其他格式，转换为列表的列表
-                if not isinstance(table["rows"], list) or (table["rows"] and not isinstance(table["rows"][0], list)):
-                    try:
-                        # 如果是字典列表，尝试提取值
-                        if isinstance(table["rows"], list) and table["rows"] and isinstance(table["rows"][0], dict):
-                            # 获取所有键
-                            all_keys = set()
-                            for row_dict in table["rows"]:
-                                all_keys.update(row_dict.keys())
+                    tables.append(TableInfo(**table_data))
+                except Exception as e_table:
+                    logger.warning(f"Skipping table due to parsing error: {e_table}. Table data: {table_data}")
 
-                            # 转换为有序列表
-                            keys_list = sorted(list(all_keys))
 
-                            # 创建表头
-                            if "headers" not in table or not table["headers"]:
-                                table["headers"] = keys_list
-
-                            # 转换每一行
-                            new_rows = []
-                            for row_dict in table["rows"]:
-                                row_values = [str(row_dict.get(key, "")) for key in keys_list]
-                                new_rows.append(row_values)
-
-                            table["rows"] = new_rows
-                        # 如果是字典，可能是Gemini返回的表格内容
-                        elif isinstance(table["rows"], dict):
-                            # 创建一个空的行列表
-                            table["rows"] = []
-                    except Exception as e:
-                        logger.warning(f"Failed to convert table rows to list format: {e}")
-                        # 如果转换失败，使用空列表
-                        table["rows"] = []
-
-            # 创建TableInfo对象
-            try:
-                tables.append(TableInfo(**table))
-            except Exception as e:
-                logger.warning(f"Failed to create TableInfo object: {e}. Skipping this table.")
-                # 记录详细信息以便调试
-                logger.debug(f"Table data: {table}")
-
-        # 创建最终响应
-        response = OcrResponse(
-            document_metadata=document_metadata,
-            processing_info=processing_info,
-            pages=pages,
-            full_text=result["full_text"],
-            tables=tables,
-            images=result.get("images", []),
-            gemini_analysis=gemini_analysis
-        )
-
-        logger.info(f"Successfully processed and converted '{file.filename}'")
-        return response
+            return OcrResponse(
+                document_metadata=document_metadata,
+                processing_info=processing_info,
+                pages=pages,
+                full_text=result_standard.get("full_text", ""), # Use .get for safety
+                tables=tables,
+                images=result_standard.get("images", []), # Use .get for safety
+                gemini_analysis=gemini_analysis
+            )
 
     except Exception as e:
         logger.exception(f"Error processing file {file.filename}: {e}")
@@ -1332,12 +1893,14 @@ async def ocr_status():
     """
     return {
         "status": "running",
-        "version": "1.0.0",
+        "version": "1.1.0",  # 更新版本号
         "capabilities": {
             "pypdf2_available": PYPDF2_AVAILABLE,
             "docling_available": DOCLING_AVAILABLE,
             "gemini_enabled": GEMINI_ENABLED,
-            "default_gemini_model": DEFAULT_GEMINI_MODEL if GEMINI_ENABLED else None
+            "default_gemini_model": DEFAULT_GEMINI_MODEL if GEMINI_ENABLED else None,
+            "available_gemini_models": AVAILABLE_GEMINI_MODELS if GEMINI_ENABLED else [],
+            "gemini_model_configs": GEMINI_MODELS if GEMINI_ENABLED else {}
         },
         "cache_dir": os.path.abspath(LOCAL_CACHE_DIR),
         "upload_dir": os.path.abspath(UPLOAD_DIR)
@@ -1351,8 +1914,8 @@ if __name__ == "__main__":
     # May also need to install docling if you want to use it:
     # pip install docling easyocr
 
-    logger.info("Starting OCR microservice with Uvicorn on http://127.0.0.1:8011")
-    uvicorn.run(app, host="127.0.0.1", port=8011)
+    logger.info("Starting OCR microservice with Uvicorn on http://127.0.0.1:8012")
+    uvicorn.run(app, host="127.0.0.1", port=8012)
 
 # Example of how to run from command line:
 # python ocr_service.py

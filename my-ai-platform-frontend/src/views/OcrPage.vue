@@ -54,6 +54,9 @@
                 <n-checkbox v-model:checked="formValue.useGemini">
                   使用Gemini进行内容分析
                 </n-checkbox>
+                <n-checkbox v-model:checked="formValue.useVisionOcr">
+                  使用Gemini Vision OCR（适合扫描PDF和图像）
+                </n-checkbox>
                 <n-checkbox v-model:checked="formValue.forceOcr">
                   强制OCR处理（即使PDF包含文本）
                 </n-checkbox>
@@ -66,6 +69,19 @@
                 :options="languageOptions"
                 placeholder="选择文档语言"
               />
+            </n-form-item>
+
+            <n-form-item label="Gemini模型" v-if="formValue.useGemini || formValue.useVisionOcr">
+              <n-select
+                v-model:value="formValue.geminiModel"
+                :options="geminiModelOptions"
+                placeholder="选择Gemini模型"
+              />
+              <template #feedback>
+                <div class="model-description">
+                  {{ getModelDescription(formValue.geminiModel) }}
+                </div>
+              </template>
             </n-form-item>
           </n-form>
         </div>
@@ -181,8 +197,10 @@ const formValue = ref({
   usePypdf2: true,
   useDocling: true,
   useGemini: true,
+  useVisionOcr: false,  // 新增Vision OCR选项，默认关闭
   forceOcr: false,
-  language: 'auto'
+  language: 'auto',
+  geminiModel: 'gemini-1.5-flash'  // 默认使用最快的模型
 });
 
 // 语言选项
@@ -194,6 +212,27 @@ const languageOptions = [
   { label: '韩文', value: 'kor' },
   { label: '中英混合', value: 'chi_sim+eng' }
 ];
+
+// Gemini模型选项
+const geminiModelOptions = [
+  { label: 'Gemini 1.5 Flash (最快)', value: 'gemini-1.5-flash' },
+  { label: 'Gemini 1.5 Pro (平衡)', value: 'gemini-1.5-pro' },
+  { label: 'Gemini 2.5 Pro Preview 05-06 (最佳OCR质量)', value: 'gemini-2.5-pro-preview-05-06' }
+];
+
+// 获取模型描述
+const getModelDescription = (modelValue: string) => {
+  switch (modelValue) {
+    case 'gemini-1.5-flash':
+      return '最快的处理速度，适合快速文档分析，成本最低';
+    case 'gemini-1.5-pro':
+      return '平衡的速度和质量，适合大多数文档处理任务';
+    case 'gemini-2.5-pro-preview-05-06':
+      return '最高的OCR识别质量，专门优化用于扫描PDF和图像文字识别，处理时间较长但准确性最高';
+    default:
+      return '';
+  }
+};
 
 // 接受的文件类型
 const acceptFileTypes = '.pdf,.jpg,.jpeg,.png,.tiff,.tif,.bmp';
@@ -290,8 +329,10 @@ const customRequest = ({ file }) => {
       usePypdf2: formValue.value.usePypdf2,
       useDocling: formValue.value.useDocling,
       useGemini: formValue.value.useGemini,
+      useVisionOcr: formValue.value.useVisionOcr,
       forceOcr: formValue.value.forceOcr,
-      language: formValue.value.language
+      language: formValue.value.language,
+      geminiModel: formValue.value.geminiModel
     });
   } else if (file.file && file.file instanceof File) {
     // 有些UI组件可能会将文件包装在一个对象中
@@ -300,8 +341,10 @@ const customRequest = ({ file }) => {
       usePypdf2: formValue.value.usePypdf2,
       useDocling: formValue.value.useDocling,
       useGemini: formValue.value.useGemini,
+      useVisionOcr: formValue.value.useVisionOcr,
       forceOcr: formValue.value.forceOcr,
-      language: formValue.value.language
+      language: formValue.value.language,
+      geminiModel: formValue.value.geminiModel
     });
   } else {
     console.error('无效的文件对象:', file);
@@ -319,8 +362,10 @@ const resetForm = () => {
     usePypdf2: true,
     useDocling: true,
     useGemini: true,
+    useVisionOcr: false,
     forceOcr: false,
-    language: 'auto'
+    language: 'auto',
+    geminiModel: 'gemini-1.5-flash'
   };
 };
 
@@ -479,6 +524,13 @@ onUnmounted(() => {
 
 .table-item h4 {
   margin-bottom: 10px;
+}
+
+.model-description {
+  font-size: 12px;
+  color: #666;
+  margin-top: 4px;
+  line-height: 1.4;
 }
 
 /* 全局加载指示器已移除 */

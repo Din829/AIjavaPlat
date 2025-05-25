@@ -15,8 +15,10 @@ export interface OcrUploadRequest {
   usePypdf2?: boolean;
   useDocling?: boolean;
   useGemini?: boolean;
+  useVisionOcr?: boolean; // 新增Vision OCR选项
   forceOcr?: boolean;
   language?: string;
+  geminiModel?: string; // 新增Gemini模型选择参数
 }
 
 /**

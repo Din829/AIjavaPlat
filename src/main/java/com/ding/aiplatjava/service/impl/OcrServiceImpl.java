@@ -145,8 +145,10 @@ public class OcrServiceImpl implements OcrService {
             options.put("usePypdf2", requestDto.isUsePypdf2());
             options.put("useDocling", requestDto.isUseDocling());
             options.put("useGemini", requestDto.isUseGemini());
+            options.put("useVisionOcr", requestDto.isUseVisionOcr()); // 添加Vision OCR选项
             options.put("forceOcr", requestDto.isForceOcr());
             options.put("language", requestDto.getLanguage());
+            options.put("geminiModel", requestDto.getGeminiModel()); // 添加模型选择参数
 
             // 3. 调用OCR处理服务
             CompletableFuture<Map<String, Object>> resultFuture = ocrProcessingService.processFile(filePath, options);

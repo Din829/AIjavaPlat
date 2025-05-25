@@ -13,8 +13,10 @@ export interface OcrUploadRequest {
   usePypdf2?: boolean;
   useDocling?: boolean;
   useGemini?: boolean;
+  useVisionOcr?: boolean; // 新增Vision OCR选项
   forceOcr?: boolean;
   language?: string;
+  geminiModel?: string; // 新增Gemini模型选择参数
 }
 
 export interface OcrTaskResponse {
@@ -52,11 +54,17 @@ const ocrService = {
     if (options.useGemini !== undefined) {
       formData.append('useGemini', options.useGemini.toString());
     }
+    if (options.useVisionOcr !== undefined) {
+      formData.append('useVisionOcr', options.useVisionOcr.toString());
+    }
     if (options.forceOcr !== undefined) {
       formData.append('forceOcr', options.forceOcr.toString());
     }
     if (options.language) {
       formData.append('language', options.language);
+    }
+    if (options.geminiModel) {
+      formData.append('geminiModel', options.geminiModel);
     }
 
     const response: AxiosResponse<OcrTaskResponse> = await apiClient.post(

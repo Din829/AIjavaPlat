@@ -84,8 +84,10 @@ export const useOcrStore = defineStore('ocr', {
           usePypdf2: true,
           useDocling: true,
           useGemini: true,
+          useVisionOcr: false, // 默认关闭Vision OCR
           forceOcr: false,
-          language: 'auto'
+          language: 'auto',
+          geminiModel: 'gemini-1.5-flash' // 默认使用最快的模型
         };
 
         // 合并选项

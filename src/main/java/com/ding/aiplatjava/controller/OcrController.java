@@ -67,6 +67,17 @@ public class OcrController {
         
         log.info("收到OCR文件上传请求，文件名: {}", file.getOriginalFilename());
         
+        // 添加详细的参数日志记录
+        log.info("=== Controller层接收到的参数 ===");
+        log.info("usePypdf2: {}", requestDto.isUsePypdf2());
+        log.info("useDocling: {}", requestDto.isUseDocling());
+        log.info("useGemini: {}", requestDto.isUseGemini());
+        log.info("useVisionOcr: {}", requestDto.isUseVisionOcr());
+        log.info("forceOcr: {}", requestDto.isForceOcr());
+        log.info("language: {}", requestDto.getLanguage());
+        log.info("geminiModel: {}", requestDto.getGeminiModel());
+        log.info("=== 参数记录完成 ===");
+        
         if (file.isEmpty()) {
             log.warn("上传的文件为空");
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请选择要上传的文件");
