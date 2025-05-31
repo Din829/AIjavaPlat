@@ -163,38 +163,24 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyDFLyEYqgaC6plSFF5IjvQEW0FEug
 
 # 定义可用的Gemini模型配置
 GEMINI_MODELS = {
-    "gemini-2.5-pro": {
-        "name": "models/gemini-2.5-pro-preview-05-06",
-        "display_name": "Gemini 2.5 Pro (最高质量)",
-        "description": "最强大的模型，适合复杂文档分析，但速度较慢",
-        "speed": "slow",
-        "quality": "highest"
-    },
     "gemini-2.5-pro-preview-05-06": {
         "name": "models/gemini-2.5-pro-preview-05-06",
         "display_name": "Gemini 2.5 Pro Preview 05-06 (最佳OCR质量)",
-        "description": "专门优化用于OCR和图像文字识别的模型",
+        "description": "专门优化用于OCR和图像文字识别的模型，精度最高但处理时间较长",
         "speed": "slow",
         "quality": "highest"
     },
-    "gemini-1.5-pro": {
-        "name": "models/gemini-1.5-pro",
-        "display_name": "Gemini 1.5 Pro (平衡)",
-        "description": "平衡质量和速度的模型，适合大多数场景",
-        "speed": "medium",
-        "quality": "high"
-    },
-    "gemini-1.5-flash": {
-        "name": "models/gemini-1.5-flash",
-        "display_name": "Gemini 1.5 Flash (最快速度)",
-        "description": "最快的模型，适合快速处理，质量良好",
+    "gemini-2.5-flash-preview-05-20": {
+        "name": "models/gemini-2.5-flash-preview-05-20",
+        "display_name": "Gemini 2.5 Flash Preview 05-20 (快速)",
+        "description": "最新的快速模型，在保持良好质量的同时大幅提升处理速度",
         "speed": "fast",
         "quality": "good"
     }
 }
 
 # 设置默认模型（优先使用Flash模型以提升速度）
-DEFAULT_GEMINI_MODEL_KEY = "gemini-1.5-flash"
+DEFAULT_GEMINI_MODEL_KEY = "gemini-2.5-flash-preview-05-20"
 DEFAULT_GEMINI_MODEL = None
 AVAILABLE_GEMINI_MODELS = []
 
@@ -1533,34 +1519,36 @@ async def process_with_gemini_vision_ocr(pdf_path: str, language: str, model_nam
     all_text: List[str] = []
     doc = None
     try:
-        # 从文件路径读取字节，因为fitz.open(filename=...)在某些环境下处理Unicode路径可能存在问题
         with open(pdf_path, "rb") as f:
             pdf_content_bytes = f.read()
         
         doc = fitz.open(stream=pdf_content_bytes, filetype="pdf")
+        model = genai.GenerativeModel(model_name)
         
-        model = genai.GenerativeModel(model_name) # 使用传入的模型名称
+        # language_descriptor 的定义被移除了，因为新的提示词直接使用了 language 变量
+        # language_descriptor = f"'{language}'" if language and language.lower() != "auto" else "to be auto-detected by you"
         
-        # 构建基础的prompt，可以根据language参数调整
-        # 注意：Gemini 1.5 Flash/Pro 的 Vision 模型通常不需要非常复杂的 OCR prompt
-        # "Extract text from this image." 配合 "auto" language 通常足够
-        prompt_parts = [f"Extract all text from this image. Document language is {language if language != 'auto' else 'any language'}."]
+        # 基于用户当前的极简提示词进行修改
+        # 用户当前代码中的提示词是: f"""Extract all text from this image. Document language is {language if language != 'auto' else 'any language'}.""" 
+        # 在此基础上增加 "Output in the original format."
+        final_minimal_prompt = f"""Extract all text from this image. Document language is {language if language != 'auto' else 'any language'}. Output in the original format."""
 
         for page_num in range(len(doc)):
             page = doc.load_page(page_num)
-            # 将PDF页面转换为高质量图像 (PNG)
-            # 增加DPI以提高图像质量，有助于OCR识别，但会增加处理时间和图像大小
+            # 用户代码中DPI为300
             pix = page.get_pixmap(dpi=300) 
             img_bytes = pix.tobytes("png")
             img_pil = Image.open(io.BytesIO(img_bytes))
 
-            logger.info(f"向Gemini发送第 {page_num + 1}/{len(doc)} 页进行OCR处理...")
+            logger.info(f"向Gemini发送第 {page_num + 1}/{len(doc)} 页进行OCR处理 (DPI: 300)...")
+            
+            prompt_parts_for_api = [final_minimal_prompt] # 使用最终的极简提示词
             
             current_page_text_parts = []
             try:
-                # 为Gemini API调用设置超时 (例如120秒)
+                # 保持120秒超时，观察效果
                 response = model.generate_content(
-                    prompt_parts + [img_pil],
+                    prompt_parts_for_api + [img_pil],
                     request_options={"timeout": 120} 
                 )
 

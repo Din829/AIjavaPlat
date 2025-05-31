@@ -85,19 +85,58 @@
             </n-form-item>
           </n-form>
         </div>
+
       </div>
 
-      <!-- 处理中状态 -->
-      <div v-if="isProcessing && uploadedFile && currentTask?.fileName" class="processing-section">
+      <!-- 处理中状态 - 智能进度版 -->
+      <div v-if="showProcessingIndicator" class="processing-section">
         <n-spin size="large">
           <template #description>
-            <span>正在处理文档，请稍候...</span>
+            <div class="processing-text">
+              <h3>🔄 正在处理文档</h3>
+              <p>{{ getProcessingMessage() }}</p>
+            </div>
           </template>
         </n-spin>
+
+        <!-- 任务信息 -->
         <div class="processing-info" v-if="currentTask">
-          <p>任务ID: {{ currentTask.taskId }}</p>
-          <p>文件名: {{ currentTask.fileName }}</p>
-          <p>创建时间: {{ currentTask.createdAt }}</p>
+          <p><strong>文件名:</strong> {{ currentTask.originalFilename }}</p>
+          <p><strong>模型:</strong> {{ formValue.geminiModel === 'gemini-2.5-flash-preview-05-20' ? 'Gemini 2.5 Flash (快速)' : 'Gemini 2.5 Pro (高质量)' }}</p>
+          <p><strong>状态:</strong> {{ getDetailedStatus() }}</p>
+        </div>
+
+        <!-- 现代化处理进度 -->
+        <div class="progress-container" v-if="showProcessingIndicator">
+          <div class="progress-header">
+            <h4>处理进度</h4>
+            <div class="progress-summary">{{ getProgressSummary() }}</div>
+          </div>
+
+          <div class="progress-steps">
+            <div
+              v-for="(step, index) in progressSteps"
+              :key="index"
+              :class="['progress-step', step.status]"
+            >
+              <div class="step-left">
+                <div class="step-icon">{{ step.icon }}</div>
+                <div class="step-info">
+                  <div class="step-title">{{ step.message }}</div>
+                  <div v-if="step.detail" class="step-subtitle">{{ step.detail }}</div>
+                </div>
+              </div>
+              <div class="step-right">
+                <div class="step-status">
+                  <span v-if="step.status === 'completed'" class="status-completed">✓</span>
+                  <span v-else-if="step.status === 'active'" class="status-active">
+                    <n-spin size="small" />
+                  </span>
+                  <span v-else class="status-pending">○</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -117,7 +156,7 @@
 
         <div class="result-info">
           <p>任务ID: {{ currentTask.taskId }}</p>
-          <p>文件名: {{ currentTask.fileName }}</p>
+          <p>文件名: {{ currentTask.originalFilename }}</p>
           <p>创建时间: {{ currentTask.createdAt }}</p>
           <p>完成时间: {{ currentTask.completedAt }}</p>
           <p>处理耗时: {{ processingTime }}</p>
@@ -136,22 +175,6 @@
               <n-empty v-else description="无文本内容" />
             </n-tab-pane>
 
-            <!-- 表格内容标签页 -->
-            <n-tab-pane name="tables" tab="表格内容">
-              <div v-if="resultContent?.tables && resultContent.tables.length > 0" class="result-tables">
-                <div v-for="(table, index) in resultContent.tables" :key="index" class="table-item">
-                  <h4>表格 {{ index + 1 }}</h4>
-                  <n-data-table
-                    :columns="getTableColumns(table)"
-                    :data="getTableData(table)"
-                    :bordered="true"
-                    :single-line="false"
-                  />
-                </div>
-              </div>
-              <n-empty v-else description="无表格内容" />
-            </n-tab-pane>
-
             <!-- Gemini分析标签页 -->
             <n-tab-pane name="analysis" tab="内容分析">
               <div v-if="resultContent?.analysis" class="result-analysis">
@@ -160,13 +183,6 @@
                 </n-scrollbar>
               </div>
               <n-empty v-else description="无内容分析" />
-            </n-tab-pane>
-
-            <!-- 原始JSON标签页 -->
-            <n-tab-pane name="json" tab="原始JSON">
-              <n-scrollbar style="max-height: 400px">
-                <pre>{{ JSON.stringify(currentTask.result, null, 2) }}</pre>
-              </n-scrollbar>
             </n-tab-pane>
           </n-tabs>
         </div>
@@ -179,7 +195,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import {
   NCard, NUpload, NUploadDragger, NIcon, NButton, NSpace,
-  NSpin, NTabs, NTabPane, NEmpty, NScrollbar, NDataTable,
+  NSpin, NTabs, NTabPane, NEmpty, NScrollbar,
   NForm, NFormItem, NCheckbox, NSelect
 } from 'naive-ui';
 import { DocumentOutline } from '@vicons/ionicons5';
@@ -200,7 +216,7 @@ const formValue = ref({
   useVisionOcr: false,  // 新增Vision OCR选项，默认关闭
   forceOcr: false,
   language: 'auto',
-  geminiModel: 'gemini-1.5-flash'  // 默认使用最快的模型
+  geminiModel: 'gemini-2.5-flash-preview-05-20'  // 默认使用最快的模型
 });
 
 // 语言选项
@@ -215,20 +231,17 @@ const languageOptions = [
 
 // Gemini模型选项
 const geminiModelOptions = [
-  { label: 'Gemini 1.5 Flash (最快)', value: 'gemini-1.5-flash' },
-  { label: 'Gemini 1.5 Pro (平衡)', value: 'gemini-1.5-pro' },
+  { label: 'Gemini 2.5 Flash Preview 05-20 (快速)', value: 'gemini-2.5-flash-preview-05-20' },
   { label: 'Gemini 2.5 Pro Preview 05-06 (最佳OCR质量)', value: 'gemini-2.5-pro-preview-05-06' }
 ];
 
 // 获取模型描述
 const getModelDescription = (modelValue: string) => {
   switch (modelValue) {
-    case 'gemini-1.5-flash':
-      return '最快的处理速度，适合快速文档分析，成本最低';
-    case 'gemini-1.5-pro':
-      return '平衡的速度和质量，适合大多数文档处理任务';
+    case 'gemini-2.5-flash-preview-05-20':
+      return '最新的快速模型，在保持良好质量的同时大幅提升处理速度，适合快速文档分析';
     case 'gemini-2.5-pro-preview-05-06':
-      return '最高的OCR识别质量，专门优化用于扫描PDF和图像文字识别，处理时间较长但准确性最高';
+      return '最高的OCR识别质量，专门优化用于扫描PDF和图像文字识别，精度最高但处理时间较长';
     default:
       return '';
   }
@@ -242,6 +255,96 @@ const isUploading = computed(() => ocrStore.isUploading);
 const isProcessing = computed(() => ocrStore.isProcessing);
 const isLoading = computed(() => ocrStore.isLoading);
 const currentTask = computed(() => ocrStore.currentTask);
+
+// 智能显示处理指示器
+const showProcessingIndicator = computed(() => {
+  // 如果正在上传，显示
+  if (isUploading.value) {
+    return true;
+  }
+
+  // 如果正在处理，显示
+  if (isProcessing.value) {
+    return true;
+  }
+
+  // 如果有任务且任务未完成，显示
+  if (currentTask.value && currentTask.value.taskId) {
+    const status = currentTask.value.status;
+    // 只有在明确完成或失败时才不显示
+    if (status === 'COMPLETED' || status === 'FAILED') {
+      return false;
+    }
+    // 其他情况（PENDING、PROCESSING、或状态未知）都显示
+    return true;
+  }
+
+  return false;
+});
+
+// 智能进度步骤计算
+const progressSteps = computed(() => {
+  if (!showProcessingIndicator.value) return [];
+
+  const steps = [
+    { icon: '📄', message: '文档上传', status: 'completed', detail: '' },
+    { icon: '🔍', message: '文字识别处理', status: 'pending', detail: '' },
+    { icon: '🤖', message: 'AI内容分析', status: 'pending', detail: '' },
+    { icon: '✨', message: '结果整理', status: 'pending', detail: '' }
+  ];
+
+  // 如果正在上传，第一步为active
+  if (isUploading.value) {
+    steps[0].status = 'active';
+    steps[0].detail = '正在上传到服务器...';
+    return steps;
+  }
+
+  // 如果有任务，根据任务创建时间和状态模拟进度
+  if (currentTask.value && currentTask.value.createdAt) {
+    try {
+      const createdAt = new Date(currentTask.value.createdAt);
+      const now = new Date();
+      const elapsedSeconds = Math.floor((now.getTime() - createdAt.getTime()) / 1000);
+
+      // 根据选择的模型调整时间阶段
+      const isFlashModel = formValue.value.geminiModel === 'gemini-2.5-flash-preview-05-20';
+      const timeStages = isFlashModel
+        ? { ocr: 8, analysis: 20, finish: 25 }  // Flash模型时间点
+        : { ocr: 15, analysis: 40, finish: 50 }; // Pro模型时间点
+
+      if (elapsedSeconds < timeStages.ocr) {
+        // OCR阶段
+        steps[1].status = 'active';
+        steps[1].detail = '正在识别文档内容...';
+      } else if (elapsedSeconds < timeStages.analysis) {
+        // AI分析阶段
+        steps[1].status = 'completed';
+        steps[2].status = 'active';
+        steps[2].detail = `正在使用${isFlashModel ? 'Gemini 2.5 Flash' : 'Gemini 2.5 Pro'}分析...`;
+      } else if (elapsedSeconds < timeStages.finish) {
+        // 结果整理阶段
+        steps[1].status = 'completed';
+        steps[2].status = 'completed';
+        steps[3].status = 'active';
+        steps[3].detail = '即将完成...';
+      } else {
+        // 超时但未完成，显示延迟状态
+        steps[1].status = 'completed';
+        steps[2].status = 'completed';
+        steps[3].status = 'active';
+        steps[3].detail = '处理时间较长，请耐心等待...';
+      }
+    } catch (e) {
+      console.error('计算进度步骤时出错:', e);
+      // 出错时显示默认状态
+      steps[1].status = 'active';
+      steps[1].detail = '正在处理中...';
+    }
+  }
+
+  return steps;
+});
 const resultContent = computed(() => {
   if (!currentTask.value) {
     console.log('currentTask is null');
@@ -314,6 +417,8 @@ const processingTime = computed(() => {
   }
 });
 
+
+
 // 自定义上传请求
 const customRequest = ({ file }) => {
   if (!file) return;
@@ -365,7 +470,7 @@ const resetForm = () => {
     useVisionOcr: false,
     forceOcr: false,
     language: 'auto',
-    geminiModel: 'gemini-1.5-flash'
+    geminiModel: 'gemini-2.5-flash-preview-05-20'
   };
 };
 
@@ -382,25 +487,68 @@ const refreshResult = async () => {
   }
 };
 
-// 获取表格列
-const getTableColumns = (table) => {
-  if (!table || !table.data || table.data.length === 0) return [];
+// 获取处理消息
+const getProcessingMessage = () => {
+  if (!currentTask.value) return '正在初始化...';
 
-  // 使用第一行数据的键作为列
-  const firstRow = table.data[0];
-  return Object.keys(firstRow).map(key => ({
-    title: key,
-    key,
-    ellipsis: {
-      tooltip: true
-    }
-  }));
+  const isFlashModel = formValue.value.geminiModel === 'gemini-2.5-flash-preview-05-20';
+  const estimatedTime = isFlashModel ? '约25秒' : '约50秒';
+
+  // 如果正在上传
+  if (isUploading.value) {
+    return '正在上传文档到服务器...';
+  }
+
+  // 根据任务状态显示不同消息
+  if (currentTask.value.status === 'PENDING') {
+    return `文档已上传，等待处理中... 预计需要${estimatedTime}`;
+  } else if (currentTask.value.status === 'PROCESSING') {
+    return `正在进行OCR识别和AI分析... 预计需要${estimatedTime}`;
+  } else if (currentTask.value.taskId && !currentTask.value.status) {
+    return `文档上传成功，正在初始化处理... 预计需要${estimatedTime}`;
+  }
+
+  return `正在处理文档，请稍候... 预计需要${estimatedTime}`;
 };
 
-// 获取表格数据
-const getTableData = (table) => {
-  if (!table || !table.data) return [];
-  return table.data;
+// 获取详细状态
+const getDetailedStatus = () => {
+  if (!currentTask.value) return '初始化中';
+
+  if (isUploading.value) return '上传中';
+
+  switch (currentTask.value.status) {
+    case 'PENDING':
+      return '等待处理';
+    case 'PROCESSING':
+      return '正在处理';
+    case 'COMPLETED':
+      return '处理完成';
+    case 'FAILED':
+      return '处理失败';
+    default:
+      return currentTask.value.taskId ? '已创建，等待开始' : '初始化中';
+  }
+};
+
+// 获取进度摘要
+const getProgressSummary = () => {
+  if (!currentTask.value) return '';
+
+  const completedSteps = progressSteps.value.filter(step => step.status === 'completed').length;
+  const totalSteps = progressSteps.value.length;
+  const percentage = Math.round((completedSteps / totalSteps) * 100);
+
+  if (isUploading.value) {
+    return '正在上传文件...';
+  }
+
+  const activeStep = progressSteps.value.find(step => step.status === 'active');
+  if (activeStep && activeStep.detail) {
+    return activeStep.detail;
+  }
+
+  return `${completedSteps}/${totalSteps} 步骤完成 (${percentage}%)`;
 };
 
 // 文件上传前的处理
@@ -483,12 +631,173 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 40px 0;
+  padding: 40px 20px;
+}
+
+.processing-text {
+  text-align: center;
+  margin-top: 16px;
+}
+
+.processing-text h3 {
+  margin: 0 0 8px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #333;
+}
+
+.processing-text p {
+  margin: 0;
+  font-size: 14px;
+  color: #666;
+  line-height: 1.5;
 }
 
 .processing-info {
-  margin-top: 20px;
+  margin-top: 24px;
   text-align: center;
+  background-color: rgba(0, 0, 0, 0.02);
+  padding: 16px 24px;
+  border-radius: 8px;
+  font-size: 14px;
+  max-width: 400px;
+}
+
+.processing-info p {
+  margin: 6px 0;
+}
+
+/* 现代化进度容器 */
+.progress-container {
+  margin-top: 24px;
+  max-width: 500px;
+  background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.progress-header h4 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.progress-summary {
+  font-size: 13px;
+  color: #7f8c8d;
+  font-weight: 500;
+}
+
+.progress-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.progress-step {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+  background-color: rgba(255, 255, 255, 0.7);
+  border: 1px solid transparent;
+  min-height: 60px;
+}
+
+.progress-step.active {
+  background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%);
+  border-color: #2196f3;
+  box-shadow: 0 2px 8px rgba(33, 150, 243, 0.15);
+}
+
+.progress-step.completed {
+  background: linear-gradient(135deg, #e8f5e8 0%, #f1f8e9 100%);
+  border-color: #4caf50;
+}
+
+.step-left {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  flex: 1;
+  padding-top: 4px;
+}
+
+.step-icon {
+  font-size: 18px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background-color: rgba(255, 255, 255, 0.8);
+  flex-shrink: 0;
+}
+
+.step-info {
+  flex: 1;
+}
+
+.step-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #2c3e50;
+  margin-bottom: 2px;
+}
+
+.step-subtitle {
+  font-size: 12px;
+  color: #7f8c8d;
+  line-height: 1.4;
+}
+
+.step-right {
+  display: flex;
+  align-items: flex-start;
+  padding-top: 4px;
+}
+
+.step-status {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.status-completed {
+  color: #4caf50;
+  font-size: 16px;
+  font-weight: bold;
+}
+
+.status-active {
+  color: #2196f3;
+}
+
+.status-pending {
+  color: #bdc3c7;
+  font-size: 14px;
+}
+
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.7; }
+  100% { opacity: 1; }
 }
 
 .result-section {
@@ -518,13 +827,7 @@ onUnmounted(() => {
   word-wrap: break-word;
 }
 
-.table-item {
-  margin-bottom: 20px;
-}
 
-.table-item h4 {
-  margin-bottom: 10px;
-}
 
 .model-description {
   font-size: 12px;

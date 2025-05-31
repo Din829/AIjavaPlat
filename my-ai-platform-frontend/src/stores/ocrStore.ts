@@ -219,14 +219,12 @@ export const useOcrStore = defineStore('ocr', {
       // 先停止之前的轮询
       this.stopPolling();
 
-      // 只有在有任务ID且任务状态为PENDING或PROCESSING时才设置isProcessing为true
-      if (taskId && this.currentTask &&
-          (this.currentTask.status === OcrTaskStatus.PENDING ||
-           this.currentTask.status === OcrTaskStatus.PROCESSING)) {
+      // 只要有任务ID就设置isProcessing为true，表示正在处理
+      if (taskId) {
         console.log('Setting isProcessing to true for task:', taskId);
         this.isProcessing = true;
       } else {
-        console.log('Not setting isProcessing to true, no valid task or status');
+        console.log('No taskId provided, not setting isProcessing');
         this.isProcessing = false;
       }
 

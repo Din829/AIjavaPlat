@@ -110,26 +110,67 @@ public class OcrProcessingServiceImpl implements OcrProcessingService {
                         log.info("Gemini Vision OCR成功");
                         String visionText = (String) visionOcrResult.get("extractedText");
                         result.put("extractedText", visionText != null ? visionText : "");
-                        result.put("analysis", visionOcrResult);
 
+                        // 修正 analysis 字段的赋值
+                        // visionOcrResult 本身是从 processWithGeminiVisionOcr 返回的 Map，
+                        // 它内部的 "analysis" 键对应的值已经是 "" (空字符串) 或实际的gemini分析内容（理论上Vision OCR后无分析则为空）
+                        // 我们应该直接使用这个内部的 analysis 值，而不是把整个 visionOcrResult 赋给顶层 result 的 analysis。
+                        // result.put("analysis", visionOcrResult.getOrDefault("analysis", "")); // 旧逻辑，仅赋值空字符串
+
+                        // 处理 warning
                         if (visionText != null && !visionText.trim().isEmpty()) {
-                            result.put("warning", "使用Gemini Vision OCR提取的文本");
+                            if (visionOcrResult.containsKey("warning") && visionOcrResult.get("warning") != null && !((String)visionOcrResult.get("warning")).isEmpty()) {
+                                result.put("warning", visionOcrResult.get("warning"));
+                            } else {
+                                result.put("warning", "使用Gemini Vision OCR提取的文本");
+                            }
                         } else {
                             result.put("warning", "Vision OCR未能提取到文本");
                         }
+
+                        // 新增逻辑：如果同时useGemini为true，则进行后续的文本分析
+                        if (useGemini && visionText != null && !visionText.trim().isEmpty()) {
+                            log.info("Vision OCR提取文本后，继续使用Gemini进行内容分析");
+                            Map<String, Object> geminiOptions = new HashMap<>();
+                            geminiOptions.put("language", language); // 使用顶层传入的language
+                            geminiOptions.put("geminiModel", geminiModel); // 使用顶层传入的geminiModel进行分析
+
+                            try {
+                                Map<String, Object> analysisResultFromGemini = analyzeWithGemini(visionText, geminiOptions).get();
+                                if (analysisResultFromGemini.containsKey("error")) {
+                                    log.warn("对Vision OCR文本的Gemini分析失败: {}", analysisResultFromGemini.get("error"));
+                                    result.put("analysis", Map.of("warning", "对Vision OCR文本的Gemini分析失败: " + analysisResultFromGemini.get("error")));
+                                } else {
+                                    log.info("对Vision OCR文本的Gemini分析成功");
+                                    result.put("analysis", analysisResultFromGemini);
+                                }
+                            } catch (Exception e_gemini_analysis) {
+                                log.error("对Vision OCR文本进行Gemini分析时发生异常", e_gemini_analysis);
+                                result.put("analysis", Map.of("error", "对Vision OCR文本进行Gemini分析时发生异常: " + e_gemini_analysis.getMessage()));
+                            }
+                        } else if (useGemini && (visionText == null || visionText.trim().isEmpty())) { // useGemini is true, but no visionText
+                             log.warn("希望进行Gemini分析，但Vision OCR未能提取到文本。");
+                             result.put("analysis", Map.of("warning", "Vision OCR未能提取文本，无法进行Gemini分析"));
+                        } else {
+                            // useGemini is false, analysis 应该来自 visionOcrResult (通常是空字符串 "")
+                            result.put("analysis", visionOcrResult.getOrDefault("analysis", ""));
+                        }
                     }
 
-                    log.info("Vision OCR处理完成: {}", filePath);
-                    log.info("Vision OCR流程结束，直接返回结果，跳过所有常规处理");
-                    return CompletableFuture.completedFuture(result);
+                    // log.info("Vision OCR处理完成: {}", filePath);
+                    // log.info("Vision OCR流程结束，直接返回结果，跳过所有常规处理");
+                    // return CompletableFuture.completedFuture(result); // <--- 移除此处的直接返回
 
                 } catch (Exception e) {
                     log.error("Vision OCR处理过程中发生异常: {}", filePath, e);
                     result.put("extractedText", "");
                     result.put("warning", "Vision OCR处理异常: " + e.getMessage());
                     result.put("analysis", Map.of("error", "Vision OCR处理异常: " + e.getMessage()));
-                    return CompletableFuture.completedFuture(result);
+                    return CompletableFuture.completedFuture(result); // Vision OCR 本身失败，则直接返回
                 }
+                // 如果Vision OCR流程执行完毕（无论是否后续调用了Gemini分析），都从这里返回
+                log.info("Vision OCR流程（可能包括后续Gemini分析）执行完毕，准备返回结果");
+                return CompletableFuture.completedFuture(result);
             }
 
             // ========== 以下是常规处理流程，只有在 useVisionOcr=false 时才执行 ==========
@@ -460,20 +501,28 @@ public class OcrProcessingServiceImpl implements OcrProcessingService {
     @Async
     public CompletableFuture<Map<String, Object>> analyzeWithGemini(String text, Map<String, Object> options) {
         log.info("使用Gemini分析文本，文本长度: {}", text.length());
+        String language = ((String) options.getOrDefault("language", "auto")).toLowerCase(); // 获取并转为小写，方便比较
+        // String geminiModelForAnalysis = (String) options.getOrDefault("geminiModel", "gemini-1.5-flash");
 
         try {
-            // 准备请求
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
             headers.set("x-goog-api-key", geminiApiKey);
 
-            // 构建Gemini请求体
             Map<String, Object> requestBody = new HashMap<>();
 
-            // 构建提示词
-            String prompt = "请分析以下文本，提取关键信息并以JSON格式返回结构化数据。\n\n" + text;
+            String prompt;
+            // 根据语言选择不同的自然语言提示词，明确要求非JSON输出
+            if ("ja".equals(language)) {
+                prompt = "提供されたOCR抽出テキストに基づいて、主要な内容の簡潔な要約といくつかの重要なポイントを挙げてください。回答はJSON形式ではなく、平易な日本語の文章で記述してください。\n\n以下がテキストです：\n" + text;
+            } else if ("zh".equals(language)) {
+                prompt = "根据提供的OCR提取文本，请提供主要内容的简洁摘要并列出几个关键点。请以通顺的简体中文纯文本形式回答，不要使用JSON格式。\n\n以下是文本内容：\n" + text;
+            } else { // 默认或 "en" 或 "auto" 等其他情况，使用英文提示
+                prompt = "Based on the provided OCR-extracted text, please provide a concise summary of the main content and list a few key points. Respond in plain, natural English language, not in JSON format.\n\nHere is the text:\n" + text;
+            }
+            log.info("Gemini分析提示词 (目标语言: {}): {}", language, prompt.substring(0, Math.min(prompt.length(), 200)) + "...");
 
-            // 构建contents数组
+
             List<Map<String, Object>> contents = new ArrayList<>();
             Map<String, Object> content = new HashMap<>();
             content.put("role", "user");
@@ -487,16 +536,16 @@ public class OcrProcessingServiceImpl implements OcrProcessingService {
             contents.add(content);
             requestBody.put("contents", contents);
 
-            // 添加生成参数
             Map<String, Object> generationConfig = new HashMap<>();
-            generationConfig.put("temperature", 0.2);
-            generationConfig.put("topP", 0.8);
+            generationConfig.put("temperature", 0.5); // 稍微提高一点温度，允许更多创造性/自然语言
+            generationConfig.put("topP", 0.9);
             generationConfig.put("topK", 40);
+            // 根据需要调整maxOutputTokens，确保分析内容不会被截断
+            // generationConfig.put("maxOutputTokens", 2048); 
             requestBody.put("generationConfig", generationConfig);
 
             HttpEntity<Map<String, Object>> requestEntity = new HttpEntity<>(requestBody, headers);
 
-            // 调用Gemini API
             ResponseEntity<String> response = restTemplate.postForEntity(
                 geminiUrl,
                 requestEntity,
@@ -504,15 +553,12 @@ public class OcrProcessingServiceImpl implements OcrProcessingService {
             );
 
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                // 解析JSON响应
                 JsonNode jsonNode = objectMapper.readTree(response.getBody());
                 String responseText = "";
 
-                // 检查响应格式
                 if (jsonNode.has("candidates") &&
                     jsonNode.path("candidates").isArray() &&
                     jsonNode.path("candidates").size() > 0) {
-
                     responseText = jsonNode.path("candidates")
                                           .path(0)
                                           .path("content")
@@ -522,46 +568,30 @@ public class OcrProcessingServiceImpl implements OcrProcessingService {
                                           .asText("");
                 } else {
                     log.warn("Gemini API响应格式不符合预期: {}", response.getBody());
-                    return CompletableFuture.completedFuture(Map.of("error", "Gemini API响应格式不符合预期"));
+                    // 即使格式不符合预期，也尝试将整个body作为文本处理
+                    responseText = response.getBody() != null ? response.getBody() : "";
+                     if (responseText.length() > 500) { // 避免过长的原始JSON错误信息
+                        responseText = responseText.substring(0, 500) + "... (响应体过长或非预期格式)";
+                    }
+                    return CompletableFuture.completedFuture(Map.of("error", "Gemini API响应格式不符合预期", "raw_response_preview", responseText));
                 }
-
-                // 尝试从响应文本中提取JSON
-                Map<String, Object> analysisResult = extractJsonFromText(responseText);
-
-                log.info("Gemini分析成功，提取到结构化数据");
-                return CompletableFuture.completedFuture(analysisResult);
+                
+                // 因为我们期望纯文本，所以直接将responseText包装起来
+                // extractJsonFromText 的逻辑需要调整，或者这里直接处理
+                log.info("Gemini分析成功，获取到响应文本 (长度: {})", responseText.length());
+                // 直接返回包含纯文本分析结果的Map
+                return CompletableFuture.completedFuture(Map.of("analysis_text", responseText.trim()));
             } else {
                 log.error("Gemini分析失败，状态码: {}", response.getStatusCode());
-                return CompletableFuture.completedFuture(Map.of("error", "Gemini API调用失败"));
+                String errorBody = response.getBody() != null ? response.getBody() : "";
+                if (errorBody.length() > 500) {
+                     errorBody = errorBody.substring(0, 500) + "... (响应体过长)";
+                }
+                return CompletableFuture.completedFuture(Map.of("error", "Gemini API调用失败: " + response.getStatusCode(), "details", errorBody));
             }
         } catch (Exception e) {
             log.error("Gemini分析异常", e);
-            return CompletableFuture.completedFuture(Map.of("error", e.getMessage()));
-        }
-    }
-
-    /**
-     * 从文本中提取JSON
-     *
-     * @param text 包含JSON的文本
-     * @return 提取的JSON对象
-     */
-    private Map<String, Object> extractJsonFromText(String text) {
-        try {
-            // 查找JSON开始和结束的位置
-            int startIndex = text.indexOf('{');
-            int endIndex = text.lastIndexOf('}') + 1;
-
-            if (startIndex >= 0 && endIndex > startIndex) {
-                String jsonStr = text.substring(startIndex, endIndex);
-                return objectMapper.readValue(jsonStr, Map.class);
-            } else {
-                // 如果没有找到JSON，返回原始文本
-                return Map.of("text", text);
-            }
-        } catch (Exception e) {
-            log.error("从文本中提取JSON失败", e);
-            return Map.of("text", text);
+            return CompletableFuture.completedFuture(Map.of("error", "Gemini分析异常: " + e.getMessage()));
         }
     }
 
