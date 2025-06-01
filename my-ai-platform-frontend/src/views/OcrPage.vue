@@ -14,11 +14,12 @@
       <div class="upload-section" v-if="!currentTask || currentTask.status === 'FAILED'">
         <n-upload
           ref="uploadRef"
-          :custom-request="customRequest"
-          :max="1"
+          :custom-request="batchCustomRequest"
+          :max="50"
+          multiple
           :accept="acceptFileTypes"
           :disabled="isUploading || isProcessing"
-          :show-file-list="false"
+          :show-file-list="true"
           @before-upload="handleBeforeUpload"
         >
           <n-upload-dragger>
@@ -27,12 +28,65 @@
                 <document-outline />
               </n-icon>
               <div class="upload-text">
-                <p>点击或拖拽文件到此区域上传</p>
-                <p class="upload-hint">支持PDF、图片等文件格式</p>
+                <p>点击或拖拽文件到此区域批量上传</p>
+                <p class="upload-hint">支持PDF、图片、Excel、Word、文本、CSV等文件格式</p>
+                <p class="upload-hint">最多可同时上传50个文件，支持批量处理</p>
               </div>
             </div>
           </n-upload-dragger>
         </n-upload>
+
+        <!-- 文件管理区域 -->
+        <div v-if="selectedFiles.length > 0" class="file-management">
+          <div class="file-management-header">
+            <h4>已选择的文件 ({{ selectedFiles.length }})</h4>
+            <n-space>
+              <n-button @click="addMoreFiles" type="primary" ghost size="small">
+                <template #icon>
+                  <n-icon><document-outline /></n-icon>
+                </template>
+                添加更多文件
+              </n-button>
+              <n-button @click="clearAllFiles" type="error" ghost size="small">
+                清空所有文件
+              </n-button>
+              <n-button @click="startBatchProcessing" type="primary" size="small" :disabled="selectedFiles.length === 0">
+                开始批量处理
+              </n-button>
+            </n-space>
+          </div>
+
+          <div class="file-list">
+            <div
+              v-for="(file, index) in selectedFiles"
+              :key="index"
+              class="file-item"
+            >
+              <div class="file-info">
+                <n-icon class="file-icon"><document-outline /></n-icon>
+                <div class="file-details">
+                  <div class="file-name">{{ file.name }}</div>
+                  <div class="file-meta">{{ formatFileSize(file.size) }} • {{ getFileType(file.name) }}</div>
+                </div>
+              </div>
+              <n-button @click="removeFile(index)" type="error" ghost size="tiny">
+                <template #icon>
+                  <n-icon>×</n-icon>
+                </template>
+              </n-button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 隐藏的文件输入 -->
+        <input
+          ref="fileInputRef"
+          type="file"
+          multiple
+          :accept="acceptFileTypes"
+          @change="handleFileInputChange"
+          style="display: none;"
+        />
 
         <!-- 上传选项 -->
         <div class="upload-options">
@@ -88,8 +142,59 @@
 
       </div>
 
+      <!-- 批量处理状态显示 -->
+      <div v-if="isBatchMode && batchTasks.length > 0" class="batch-processing-section">
+        <div class="batch-header">
+          <h3>📚 批量处理进度</h3>
+          <p>正在处理 {{ batchTasks.length }} 个文件</p>
+        </div>
+
+        <div class="batch-progress">
+          <div class="batch-summary">
+            <n-space>
+              <n-tag type="info">总计: {{ batchTasks.length }}</n-tag>
+              <n-tag type="warning">处理中: {{ getBatchStatusCount('PENDING') + getBatchStatusCount('PROCESSING') }}</n-tag>
+              <n-tag type="success">已完成: {{ getBatchStatusCount('COMPLETED') }}</n-tag>
+              <n-tag type="error">失败: {{ getBatchStatusCount('FAILED') }}</n-tag>
+            </n-space>
+          </div>
+
+          <div class="batch-tasks">
+            <div
+              v-for="task in batchTasks"
+              :key="task.taskId || task.fileName"
+              class="batch-task-item"
+              :class="[task.status?.toLowerCase(), { 'selected': selectedTaskId === task.taskId }]"
+              @click="selectTask(task)"
+            >
+              <div class="task-info">
+                <div class="task-name">{{ task.fileName }}</div>
+                <div class="task-status">{{ getTaskStatusText(task.status) }}</div>
+              </div>
+              <div class="task-actions">
+                <n-button
+                  v-if="task.status === 'COMPLETED'"
+                  @click.stop="viewTaskResult(task)"
+                  type="primary"
+                  ghost
+                  size="tiny"
+                >
+                  查看结果
+                </n-button>
+                <div class="task-indicator">
+                  <n-spin v-if="task.status === 'PENDING' || task.status === 'PROCESSING'" size="small" />
+                  <span v-else-if="task.status === 'COMPLETED'" class="status-icon success">✓</span>
+                  <span v-else-if="task.status === 'FAILED'" class="status-icon error">✗</span>
+                  <span v-else class="status-icon pending">○</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- 处理中状态 - 智能进度版 -->
-      <div v-if="showProcessingIndicator" class="processing-section">
+      <div v-if="showProcessingIndicator && !isBatchMode" class="processing-section">
         <n-spin size="large">
           <template #description>
             <div class="processing-text">
@@ -140,8 +245,62 @@
         </div>
       </div>
 
-      <!-- 处理结果 -->
-      <div v-if="currentTask?.status === 'COMPLETED'" class="result-section">
+      <!-- 批量处理结果 -->
+      <div v-if="isBatchMode && selectedTaskId && getSelectedTaskResult()" class="result-section">
+        <div class="result-header">
+          <h3>处理结果 - {{ getSelectedTask()?.fileName }}</h3>
+          <n-space>
+            <n-select
+              v-model:value="selectedTaskId"
+              :options="getCompletedTaskOptions()"
+              placeholder="选择要查看的文件"
+              style="width: 300px;"
+            />
+            <n-button @click="refreshBatchTaskResult" type="primary" :loading="isLoading">
+              刷新结果
+            </n-button>
+            <n-button @click="resetForm">
+              处理新文档
+            </n-button>
+          </n-space>
+        </div>
+
+        <div class="result-info">
+          <p>任务ID: {{ selectedTaskId }}</p>
+          <p>文件名: {{ getSelectedTask()?.fileName }}</p>
+          <p>创建时间: {{ getSelectedTask()?.createdAt }}</p>
+          <p>完成时间: {{ getSelectedTaskResult()?.completedAt }}</p>
+          <p>处理耗时: {{ calculateProcessingTime(getSelectedTask(), getSelectedTaskResult()) }}</p>
+        </div>
+
+        <!-- 结果内容 -->
+        <div class="result-content">
+          <n-tabs type="line" animated>
+            <!-- 文本内容标签页 -->
+            <n-tab-pane name="text" tab="文本内容">
+              <div v-if="getSelectedTaskResult()?.result?.extractedText" class="result-text">
+                <n-scrollbar style="max-height: 400px">
+                  <pre>{{ getSelectedTaskResult().result.extractedText }}</pre>
+                </n-scrollbar>
+              </div>
+              <n-empty v-else description="无文本内容" />
+            </n-tab-pane>
+
+            <!-- Gemini分析标签页 -->
+            <n-tab-pane name="analysis" tab="内容分析">
+              <div v-if="getSelectedTaskResult()?.result?.analysis" class="result-analysis">
+                <n-scrollbar style="max-height: 400px">
+                  <div v-html="formatAnalysis(getSelectedTaskResult().result.analysis)"></div>
+                </n-scrollbar>
+              </div>
+              <n-empty v-else description="无内容分析" />
+            </n-tab-pane>
+          </n-tabs>
+        </div>
+      </div>
+
+      <!-- 单文件处理结果 -->
+      <div v-else-if="!isBatchMode && currentTask?.status === 'COMPLETED'" class="result-section">
         <div class="result-header">
           <h3>处理结果</h3>
           <n-space>
@@ -192,11 +351,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import {
   NCard, NUpload, NUploadDragger, NIcon, NButton, NSpace,
   NSpin, NTabs, NTabPane, NEmpty, NScrollbar,
-  NForm, NFormItem, NCheckbox, NSelect
+  NForm, NFormItem, NCheckbox, NSelect, NTag
 } from 'naive-ui';
 import { DocumentOutline } from '@vicons/ionicons5';
 import { useOcrStore } from '../stores/ocrStore';
@@ -207,6 +366,15 @@ const ocrStore = useOcrStore();
 const uploadRef = ref();
 const formRef = ref();
 const uploadedFile = ref(null); // 跟踪上传的文件
+
+// 批量处理相关状态
+const batchTasks = ref([]); // 批量任务列表
+const batchId = ref(null); // 批量任务ID
+const isBatchMode = ref(false); // 是否为批量模式
+const selectedFiles = ref([]); // 已选择的文件列表
+const fileInputRef = ref(); // 文件输入引用
+const selectedTaskId = ref(null); // 当前选中查看的任务ID
+const batchTaskResults = ref(new Map()); // 批量任务结果缓存
 
 // 表单数据
 const formValue = ref({
@@ -248,7 +416,7 @@ const getModelDescription = (modelValue: string) => {
 };
 
 // 接受的文件类型
-const acceptFileTypes = '.pdf,.jpg,.jpeg,.png,.tiff,.tif,.bmp';
+const acceptFileTypes = '.pdf,.jpg,.jpeg,.png,.tiff,.tif,.bmp,.xlsx,.xls,.xlsm,.docx,.doc,.txt,.md,.rtf,.csv,.tsv';
 
 // 计算属性
 const isUploading = computed(() => ocrStore.isUploading);
@@ -419,30 +587,41 @@ const processingTime = computed(() => {
 
 
 
-// 自定义上传请求
+// 批量自定义上传请求 - 现在只收集文件，不立即上传
+const batchCustomRequest = ({ file, fileList }) => {
+  if (!file) return;
+
+  console.log('收集文件:', file);
+
+  // 处理单个文件
+  const actualFile = file instanceof File ? file : file.file;
+  if (actualFile instanceof File) {
+    // 检查文件是否已存在
+    const exists = selectedFiles.value.some(f => f.name === actualFile.name && f.size === actualFile.size);
+    if (!exists) {
+      selectedFiles.value.push(actualFile);
+      console.log(`文件已添加: ${actualFile.name}`);
+    } else {
+      console.log(`文件已存在，跳过: ${actualFile.name}`);
+    }
+  } else {
+    console.error('无效的文件对象:', file);
+  }
+
+  // 阻止默认上传行为
+  return false;
+};
+
+// 保留原有的单文件上传函数（备用）
 const customRequest = ({ file }) => {
   if (!file) return;
 
-  console.log('上传文件:', file);
-  console.log('文件类型:', file.type);
-  console.log('文件大小:', file.size);
+  console.log('单文件上传:', file);
 
-  // 设置上传的文件
-  if (file instanceof File) {
-    uploadedFile.value = file;
-    ocrStore.uploadFile(file, {
-      usePypdf2: formValue.value.usePypdf2,
-      useDocling: formValue.value.useDocling,
-      useGemini: formValue.value.useGemini,
-      useVisionOcr: formValue.value.useVisionOcr,
-      forceOcr: formValue.value.forceOcr,
-      language: formValue.value.language,
-      geminiModel: formValue.value.geminiModel
-    });
-  } else if (file.file && file.file instanceof File) {
-    // 有些UI组件可能会将文件包装在一个对象中
-    uploadedFile.value = file.file;
-    ocrStore.uploadFile(file.file, {
+  const actualFile = file instanceof File ? file : file.file;
+  if (actualFile instanceof File) {
+    uploadedFile.value = actualFile;
+    ocrStore.uploadFile(actualFile, {
       usePypdf2: formValue.value.usePypdf2,
       useDocling: formValue.value.useDocling,
       useGemini: formValue.value.useGemini,
@@ -456,10 +635,130 @@ const customRequest = ({ file }) => {
   }
 };
 
+// 文件管理相关函数
+const addMoreFiles = () => {
+  if (fileInputRef.value) {
+    fileInputRef.value.click();
+  }
+};
+
+const handleFileInputChange = (event) => {
+  const files = Array.from(event.target.files || []);
+  files.forEach(file => {
+    const exists = selectedFiles.value.some(f => f.name === file.name && f.size === file.size);
+    if (!exists) {
+      selectedFiles.value.push(file);
+    }
+  });
+  // 清空input以允许重复选择相同文件
+  event.target.value = '';
+};
+
+const removeFile = (index) => {
+  selectedFiles.value.splice(index, 1);
+};
+
+const clearAllFiles = () => {
+  selectedFiles.value = [];
+  if (uploadRef.value) {
+    uploadRef.value.clear();
+  }
+};
+
+const formatFileSize = (bytes) => {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
+
+const getFileType = (fileName) => {
+  const ext = fileName.split('.').pop()?.toLowerCase();
+  const typeMap = {
+    'pdf': 'PDF文档',
+    'jpg': '图片', 'jpeg': '图片', 'png': '图片', 'tiff': '图片', 'tif': '图片', 'bmp': '图片',
+    'xlsx': 'Excel', 'xls': 'Excel', 'xlsm': 'Excel',
+    'docx': 'Word', 'doc': 'Word',
+    'txt': '文本', 'md': 'Markdown', 'rtf': 'RTF',
+    'csv': 'CSV', 'tsv': 'TSV'
+  };
+  return typeMap[ext] || '未知格式';
+};
+
+const startBatchProcessing = async () => {
+  if (selectedFiles.value.length === 0) return;
+
+  console.log('开始批量处理', selectedFiles.value.length, '个文件');
+
+  // 初始化批量模式
+  isBatchMode.value = true;
+  batchTasks.value = [];
+  batchId.value = `batch_${Date.now()}`;
+
+  // 逐个处理文件
+  for (const file of selectedFiles.value) {
+    try {
+      console.log(`开始处理文件: ${file.name}`);
+
+      const response = await ocrStore.uploadFile(file, {
+        usePypdf2: formValue.value.usePypdf2,
+        useDocling: formValue.value.useDocling,
+        useGemini: formValue.value.useGemini,
+        useVisionOcr: formValue.value.useVisionOcr,
+        forceOcr: formValue.value.forceOcr,
+        language: formValue.value.language,
+        geminiModel: formValue.value.geminiModel
+      });
+
+      if (response && response.taskId) {
+        batchTasks.value.push({
+          taskId: response.taskId,
+          fileName: file.name,
+          status: response.status,
+          createdAt: response.createdAt,
+          file: file // 保存文件引用
+        });
+        console.log(`文件 ${file.name} 上传成功，任务ID: ${response.taskId}`);
+      }
+    } catch (error) {
+      console.error(`文件 ${file.name} 上传失败:`, error);
+      batchTasks.value.push({
+        taskId: null,
+        fileName: file.name,
+        status: 'FAILED',
+        error: error.message,
+        file: file
+      });
+    }
+  }
+
+  // 清空已选择的文件列表
+  selectedFiles.value = [];
+  if (uploadRef.value) {
+    uploadRef.value.clear();
+  }
+
+  // 开始轮询批量任务状态
+  startBatchPolling();
+};
+
 // 重置表单
 const resetForm = () => {
+  // 停止批量轮询
+  stopBatchPolling();
+
   ocrStore.reset();
   uploadedFile.value = null; // 清除上传的文件
+
+  // 重置批量处理状态
+  batchTasks.value = [];
+  batchId.value = null;
+  isBatchMode.value = false;
+  selectedFiles.value = [];
+  selectedTaskId.value = null;
+  batchTaskResults.value.clear();
+
   if (uploadRef.value) {
     uploadRef.value.clear();
   }
@@ -509,6 +808,221 @@ const getProcessingMessage = () => {
   }
 
   return `正在处理文档，请稍候... 预计需要${estimatedTime}`;
+};
+
+// 批量任务状态监听器
+let batchPollingInterval = null;
+
+const startBatchPolling = () => {
+  if (batchPollingInterval) {
+    clearInterval(batchPollingInterval);
+  }
+
+  batchPollingInterval = setInterval(async () => {
+    if (!isBatchMode.value || batchTasks.value.length === 0) {
+      return;
+    }
+
+    // 检查未完成的任务
+    const pendingTasks = batchTasks.value.filter(task =>
+      task.taskId && (task.status === 'PENDING' || task.status === 'PROCESSING')
+    );
+
+    if (pendingTasks.length === 0) {
+      // 所有任务都已完成，停止轮询
+      stopBatchPolling();
+      return;
+    }
+
+    // 更新任务状态
+    for (const task of pendingTasks) {
+      try {
+        const status = await ocrStore.getTaskStatus(task.taskId);
+        if (status) {
+          const taskIndex = batchTasks.value.findIndex(t => t.taskId === task.taskId);
+          if (taskIndex !== -1) {
+            batchTasks.value[taskIndex] = {
+              ...batchTasks.value[taskIndex],
+              status: status.status
+            };
+
+            // 如果任务完成，自动获取结果
+            if (status.status === 'COMPLETED' && !batchTaskResults.value.has(task.taskId)) {
+              try {
+                const result = await ocrStore.getTaskResult(task.taskId);
+                if (result) {
+                  batchTaskResults.value.set(task.taskId, result);
+                  batchTasks.value[taskIndex].completedAt = result.completedAt;
+
+                  // 如果这是第一个完成的任务，自动选中它
+                  if (!selectedTaskId.value) {
+                    selectedTaskId.value = task.taskId;
+                  }
+                }
+              } catch (error) {
+                console.error('自动获取任务结果失败:', error);
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error('更新任务状态失败:', error);
+      }
+    }
+  }, 2000); // 每2秒检查一次
+};
+
+const stopBatchPolling = () => {
+  if (batchPollingInterval) {
+    clearInterval(batchPollingInterval);
+    batchPollingInterval = null;
+  }
+};
+
+// 监听批量模式变化
+watch(isBatchMode, (newValue) => {
+  if (newValue && batchTasks.value.length > 0) {
+    startBatchPolling();
+  } else {
+    stopBatchPolling();
+  }
+});
+
+// 组件卸载时清理
+onUnmounted(() => {
+  stopBatchPolling();
+});
+
+// 批量处理相关辅助函数
+const getBatchStatusCount = (status) => {
+  return batchTasks.value.filter(task => task.status === status).length;
+};
+
+const getTaskStatusText = (status) => {
+  switch (status) {
+    case 'PENDING':
+      return '等待处理';
+    case 'PROCESSING':
+      return '处理中';
+    case 'COMPLETED':
+      return '已完成';
+    case 'FAILED':
+      return '处理失败';
+    default:
+      return '未知状态';
+  }
+};
+
+// 批量任务结果管理函数
+const selectTask = (task) => {
+  if (task.status === 'COMPLETED' && task.taskId) {
+    selectedTaskId.value = task.taskId;
+    viewTaskResult(task);
+  }
+};
+
+const viewTaskResult = async (task) => {
+  if (!task.taskId) return;
+
+  try {
+    // 如果结果已缓存，直接使用
+    if (batchTaskResults.value.has(task.taskId)) {
+      selectedTaskId.value = task.taskId;
+      return;
+    }
+
+    // 获取任务结果
+    const result = await ocrStore.getTaskResult(task.taskId);
+    if (result) {
+      batchTaskResults.value.set(task.taskId, result);
+      selectedTaskId.value = task.taskId;
+
+      // 更新批量任务状态
+      const taskIndex = batchTasks.value.findIndex(t => t.taskId === task.taskId);
+      if (taskIndex !== -1) {
+        batchTasks.value[taskIndex] = {
+          ...batchTasks.value[taskIndex],
+          status: result.status,
+          completedAt: result.completedAt
+        };
+      }
+    }
+  } catch (error) {
+    console.error('获取任务结果失败:', error);
+  }
+};
+
+const getSelectedTask = () => {
+  return batchTasks.value.find(task => task.taskId === selectedTaskId.value);
+};
+
+const getSelectedTaskResult = () => {
+  return selectedTaskId.value ? batchTaskResults.value.get(selectedTaskId.value) : null;
+};
+
+const getCompletedTaskOptions = () => {
+  return batchTasks.value
+    .filter(task => task.status === 'COMPLETED')
+    .map(task => ({
+      label: task.fileName,
+      value: task.taskId
+    }));
+};
+
+const refreshBatchTaskResult = async () => {
+  if (!selectedTaskId.value) return;
+
+  try {
+    const result = await ocrStore.getTaskResult(selectedTaskId.value);
+    if (result) {
+      batchTaskResults.value.set(selectedTaskId.value, result);
+    }
+  } catch (error) {
+    console.error('刷新任务结果失败:', error);
+  }
+};
+
+const calculateProcessingTime = (task, result) => {
+  if (!task?.createdAt || !result?.completedAt) {
+    return '未知';
+  }
+
+  try {
+    const createdAt = new Date(task.createdAt);
+    const completedAt = new Date(result.completedAt);
+    const diffMs = completedAt.getTime() - createdAt.getTime();
+
+    if (diffMs < 1000) {
+      return `${diffMs}毫秒`;
+    }
+
+    const diffSec = Math.floor(diffMs / 1000);
+    return `${diffSec}秒`;
+  } catch (e) {
+    console.error('计算处理耗时出错:', e);
+    return '计算错误';
+  }
+};
+
+const formatAnalysis = (analysis) => {
+  if (!analysis) return '';
+
+  // 检查analysis是否为错误对象
+  if (analysis.error) {
+    return `<span style="color: red;">分析失败: ${analysis.error}</span>`;
+  }
+
+  // 如果是字符串，进行格式化
+  if (typeof analysis === 'string') {
+    return analysis
+      .replace(/\n/g, '<br>')
+      .replace(/#{1,6}\s+(.*?)(?:\n|$)/g, '<strong>$1</strong><br>');
+  }
+
+  // 如果是对象但不是错误对象，转为JSON字符串
+  return JSON.stringify(analysis, null, 2)
+    .replace(/\n/g, '<br>')
+    .replace(/ /g, '&nbsp;');
 };
 
 // 获取详细状态
@@ -834,6 +1348,224 @@ onUnmounted(() => {
   color: #666;
   margin-top: 4px;
   line-height: 1.4;
+}
+
+/* 批量处理样式 */
+.batch-processing-section {
+  margin: 20px 0;
+  padding: 20px;
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  border-radius: 12px;
+  border: 1px solid #dee2e6;
+}
+
+.batch-header {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.batch-header h3 {
+  margin: 0 0 8px 0;
+  color: #2c3e50;
+  font-size: 18px;
+}
+
+.batch-header p {
+  margin: 0;
+  color: #6c757d;
+  font-size: 14px;
+}
+
+.batch-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.batch-summary {
+  display: flex;
+  justify-content: center;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 8px;
+}
+
+.batch-tasks {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.batch-task-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.batch-task-item:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.batch-task-item.selected {
+  border-color: #007bff;
+  background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%);
+  box-shadow: 0 2px 8px rgba(0, 123, 255, 0.2);
+}
+
+.batch-task-item.completed {
+  border-color: #28a745;
+  background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+}
+
+.batch-task-item.failed {
+  border-color: #dc3545;
+  background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
+}
+
+.batch-task-item.processing {
+  border-color: #007bff;
+  background: linear-gradient(135deg, #d1ecf1 0%, #bee5eb 100%);
+}
+
+.task-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.task-name {
+  font-weight: 500;
+  color: #2c3e50;
+  font-size: 14px;
+  margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-status {
+  font-size: 12px;
+  color: #6c757d;
+}
+
+.task-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.task-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.status-icon {
+  font-size: 16px;
+  font-weight: bold;
+}
+
+.status-icon.success {
+  color: #28a745;
+}
+
+.status-icon.error {
+  color: #dc3545;
+}
+
+.status-icon.pending {
+  color: #6c757d;
+}
+
+/* 文件管理样式 */
+.file-management {
+  margin: 16px 0;
+  padding: 16px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+}
+
+.file-management-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.file-management-header h4 {
+  margin: 0;
+  color: #2c3e50;
+  font-size: 16px;
+}
+
+.file-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.file-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background: white;
+  border-radius: 6px;
+  border: 1px solid #e9ecef;
+  transition: all 0.2s ease;
+}
+
+.file-item:hover {
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  border-color: #007bff;
+}
+
+.file-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.file-icon {
+  color: #007bff;
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.file-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.file-name {
+  font-weight: 500;
+  color: #2c3e50;
+  font-size: 14px;
+  margin-bottom: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-meta {
+  font-size: 12px;
+  color: #6c757d;
 }
 
 /* 全局加载指示器已移除 */
