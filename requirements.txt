@@ -1,0 +1,28 @@
+# OCR微服务依赖包
+fastapi>=0.104.0
+uvicorn>=0.24.0
+python-multipart>=0.0.6
+pydantic>=2.5.0
+
+# PDF处理
+PyPDF2>=3.0.1
+PyMuPDF>=1.23.0
+
+# OCR和文档处理
+docling>=2.32.0
+easyocr>=1.7.0
+Pillow>=10.0.0
+
+# Excel文件处理
+pandas>=2.1.0
+openpyxl>=3.1.0
+xlrd>=2.0.1
+
+# Word文档处理（为未来扩展准备）
+python-docx>=1.1.0
+
+# Google Gemini API
+google-generativeai>=0.3.0
+
+# 其他工具库
+requests>=2.31.0

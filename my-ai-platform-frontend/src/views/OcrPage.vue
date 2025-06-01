@@ -102,9 +102,10 @@
                 <n-checkbox v-model:checked="formValue.usePypdf2">
                   使用PyPDF2提取文本
                 </n-checkbox>
-                <n-checkbox v-model:checked="formValue.useDocling">
+                <!-- Docling选项暂时隐藏，因为功能有限 -->
+                <!-- <n-checkbox v-model:checked="formValue.useDocling">
                   使用Docling进行OCR
-                </n-checkbox>
+                </n-checkbox> -->
                 <n-checkbox v-model:checked="formValue.useGemini">
                   使用Gemini进行内容分析
                 </n-checkbox>
@@ -280,7 +281,12 @@
             <n-tab-pane name="text" tab="文本内容">
               <div v-if="getSelectedTaskResult()?.result?.extractedText" class="result-text">
                 <n-scrollbar style="max-height: 400px">
-                  <pre>{{ getSelectedTaskResult().result.extractedText }}</pre>
+                  <div class="rich-text-content">
+                    <RichTextDisplay
+                      :text="getSelectedTaskResult().result.extractedText"
+                      :images="getSelectedTaskResult()?.result?.images || []"
+                    />
+                  </div>
                 </n-scrollbar>
               </div>
               <n-empty v-else description="无文本内容" />
@@ -294,6 +300,40 @@
                 </n-scrollbar>
               </div>
               <n-empty v-else description="无内容分析" />
+            </n-tab-pane>
+
+            <!-- 图像内容标签页 -->
+            <n-tab-pane name="images" tab="提取图像">
+              <div v-if="getSelectedTaskResult()?.result?.images && getSelectedTaskResult().result.images.length > 0" class="result-images">
+                <n-scrollbar style="max-height: 400px">
+                  <div class="images-grid">
+                    <div
+                      v-for="image in getSelectedTaskResult().result.images"
+                      :key="image.image_id"
+                      class="image-item"
+                    >
+                      <div class="image-header">
+                        <h4>{{ image.description || image.image_id }}</h4>
+                        <n-tag size="small" type="info">第{{ image.page_number }}页</n-tag>
+                      </div>
+                      <div class="image-content">
+                        <img
+                          :src="`data:${image.mime_type};base64,${image.data}`"
+                          :alt="image.description || image.image_id"
+                          class="extracted-image"
+                          @click="previewImage(image)"
+                        />
+                      </div>
+                      <div class="image-actions">
+                        <n-button size="small" @click="downloadImage(image)">
+                          下载图像
+                        </n-button>
+                      </div>
+                    </div>
+                  </div>
+                </n-scrollbar>
+              </div>
+              <n-empty v-else description="未发现图像内容" />
             </n-tab-pane>
           </n-tabs>
         </div>
@@ -328,7 +368,12 @@
             <n-tab-pane name="text" tab="文本内容">
               <div v-if="resultContent?.extractedText" class="result-text">
                 <n-scrollbar style="max-height: 400px">
-                  <pre>{{ resultContent.extractedText }}</pre>
+                  <div class="rich-text-content">
+                    <RichTextDisplay
+                      :text="resultContent.extractedText"
+                      :images="resultContent?.images || []"
+                    />
+                  </div>
                 </n-scrollbar>
               </div>
               <n-empty v-else description="无文本内容" />
@@ -342,6 +387,40 @@
                 </n-scrollbar>
               </div>
               <n-empty v-else description="无内容分析" />
+            </n-tab-pane>
+
+            <!-- 图像内容标签页 -->
+            <n-tab-pane name="images" tab="提取图像">
+              <div v-if="resultContent?.images && resultContent.images.length > 0" class="result-images">
+                <n-scrollbar style="max-height: 400px">
+                  <div class="images-grid">
+                    <div
+                      v-for="image in resultContent.images"
+                      :key="image.image_id"
+                      class="image-item"
+                    >
+                      <div class="image-header">
+                        <h4>{{ image.description || image.image_id }}</h4>
+                        <n-tag size="small" type="info">第{{ image.page_number }}页</n-tag>
+                      </div>
+                      <div class="image-content">
+                        <img
+                          :src="`data:${image.mime_type};base64,${image.data}`"
+                          :alt="image.description || image.image_id"
+                          class="extracted-image"
+                          @click="previewImage(image)"
+                        />
+                      </div>
+                      <div class="image-actions">
+                        <n-button size="small" @click="downloadImage(image)">
+                          下载图像
+                        </n-button>
+                      </div>
+                    </div>
+                  </div>
+                </n-scrollbar>
+              </div>
+              <n-empty v-else description="未发现图像内容" />
             </n-tab-pane>
           </n-tabs>
         </div>
@@ -360,6 +439,7 @@ import {
 import { DocumentOutline } from '@vicons/ionicons5';
 import { useOcrStore } from '../stores/ocrStore';
 import { OcrTaskStatus } from '../services/ocrService';
+import RichTextDisplay from '../components/RichTextDisplay.vue';
 
 // 状态管理
 const ocrStore = useOcrStore();
@@ -379,7 +459,7 @@ const batchTaskResults = ref(new Map()); // 批量任务结果缓存
 // 表单数据
 const formValue = ref({
   usePypdf2: true,
-  useDocling: true,
+  useDocling: false,  // 隐藏Docling选项，设为false
   useGemini: true,
   useVisionOcr: false,  // 新增Vision OCR选项，默认关闭
   forceOcr: false,
@@ -691,15 +771,31 @@ const startBatchProcessing = async () => {
 
   console.log('开始批量处理', selectedFiles.value.length, '个文件');
 
-  // 初始化批量模式
+  // 立即切换到批量模式
   isBatchMode.value = true;
   batchTasks.value = [];
   batchId.value = `batch_${Date.now()}`;
 
-  // 逐个处理文件
+  // 立即为每个文件创建任务条目
   for (const file of selectedFiles.value) {
+    batchTasks.value.push({
+      id: `${batchId.value}_${file.name}`,
+      fileName: file.name,
+      fileSize: file.size,
+      status: 'pending',
+      progress: 0,
+      result: null,
+      error: null
+    });
+  }
+
+  // 异步处理每个文件（不等待）
+  selectedFiles.value.forEach(async (file, index) => {
     try {
       console.log(`开始处理文件: ${file.name}`);
+
+      // 更新状态为处理中
+      batchTasks.value[index].status = 'processing';
 
       const response = await ocrStore.uploadFile(file, {
         usePypdf2: formValue.value.usePypdf2,
@@ -712,26 +808,19 @@ const startBatchProcessing = async () => {
       });
 
       if (response && response.taskId) {
-        batchTasks.value.push({
-          taskId: response.taskId,
-          fileName: file.name,
-          status: response.status,
-          createdAt: response.createdAt,
-          file: file // 保存文件引用
-        });
+        // 更新现有任务条目
+        batchTasks.value[index].taskId = response.taskId;
+        batchTasks.value[index].status = response.status;
+        batchTasks.value[index].createdAt = response.createdAt;
         console.log(`文件 ${file.name} 上传成功，任务ID: ${response.taskId}`);
       }
     } catch (error) {
       console.error(`文件 ${file.name} 上传失败:`, error);
-      batchTasks.value.push({
-        taskId: null,
-        fileName: file.name,
-        status: 'FAILED',
-        error: error.message,
-        file: file
-      });
+      // 更新现有任务条目为失败状态
+      batchTasks.value[index].status = 'FAILED';
+      batchTasks.value[index].error = error.message;
     }
-  }
+  });
 
   // 清空已选择的文件列表
   selectedFiles.value = [];
@@ -764,7 +853,7 @@ const resetForm = () => {
   }
   formValue.value = {
     usePypdf2: true,
-    useDocling: true,
+    useDocling: false,  // 隐藏Docling选项，设为false
     useGemini: true,
     useVisionOcr: false,
     forceOcr: false,
@@ -1023,6 +1112,81 @@ const formatAnalysis = (analysis) => {
   return JSON.stringify(analysis, null, 2)
     .replace(/\n/g, '<br>')
     .replace(/ /g, '&nbsp;');
+};
+
+// 图像处理函数
+const previewImage = (image) => {
+  // 创建一个新窗口来预览图像
+  const imageUrl = `data:${image.mime_type};base64,${image.data}`;
+  const newWindow = window.open('', '_blank');
+  if (newWindow) {
+    newWindow.document.write(`
+      <html>
+        <head>
+          <title>${image.description || image.image_id}</title>
+          <style>
+            body {
+              margin: 0;
+              padding: 20px;
+              background: #f5f5f5;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              font-family: Arial, sans-serif;
+            }
+            .image-info {
+              background: white;
+              padding: 15px;
+              border-radius: 8px;
+              margin-bottom: 20px;
+              box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            }
+            img {
+              max-width: 90vw;
+              max-height: 80vh;
+              border-radius: 8px;
+              box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+              background: white;
+              padding: 10px;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="image-info">
+            <h2>${image.description || image.image_id}</h2>
+            <p>页码: 第${image.page_number}页</p>
+            <p>格式: ${image.mime_type}</p>
+          </div>
+          <img src="${imageUrl}" alt="${image.description || image.image_id}" />
+        </body>
+      </html>
+    `);
+    newWindow.document.close();
+  }
+};
+
+const downloadImage = (image) => {
+  try {
+    // 创建下载链接
+    const imageUrl = `data:${image.mime_type};base64,${image.data}`;
+    const link = document.createElement('a');
+    link.href = imageUrl;
+
+    // 生成文件名
+    const extension = image.mime_type === 'image/png' ? 'png' : 'jpg';
+    const fileName = `${image.image_id || 'extracted_image'}.${extension}`;
+    link.download = fileName;
+
+    // 触发下载
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    message.success(`图像 ${fileName} 下载成功`);
+  } catch (error) {
+    console.error('下载图像失败:', error);
+    message.error('下载图像失败');
+  }
 };
 
 // 获取详细状态
@@ -1566,6 +1730,78 @@ onUnmounted(() => {
 .file-meta {
   font-size: 12px;
   color: #6c757d;
+}
+
+/* 图像显示样式 */
+.result-images {
+  padding: 16px;
+}
+
+.images-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+.image-item {
+  background: white;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
+}
+
+.image-item:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  transform: translateY(-2px);
+}
+
+.image-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.image-header h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  flex: 1;
+  margin-right: 8px;
+}
+
+.image-content {
+  margin-bottom: 12px;
+  text-align: center;
+}
+
+.extracted-image {
+  max-width: 100%;
+  max-height: 200px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: 2px solid transparent;
+}
+
+.extracted-image:hover {
+  border-color: #1890ff;
+  transform: scale(1.02);
+}
+
+.image-actions {
+  display: flex;
+  justify-content: center;
+}
+
+/* 富文本显示样式 */
+.rich-text-content {
+  background-color: #fafafa;
+  border-radius: 8px;
+  padding: 16px;
+  border: 1px solid #e0e0e0;
 }
 
 /* 全局加载指示器已移除 */

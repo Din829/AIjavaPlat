@@ -27,6 +27,27 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
+// Apache POI imports for Excel processing
+import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.apache.poi.hssf.usermodel.HSSFWorkbook;
+import java.io.FileInputStream;
+
+// Apache POI imports for Word processing
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.apache.poi.xwpf.usermodel.XWPFParagraph;
+import org.apache.poi.xwpf.usermodel.XWPFTable;
+import org.apache.poi.xwpf.usermodel.XWPFTableRow;
+import org.apache.poi.xwpf.usermodel.XWPFTableCell;
+import org.apache.poi.hwpf.HWPFDocument;
+import org.apache.poi.hwpf.extractor.WordExtractor;
+
+// Additional imports for text file processing
+import java.nio.charset.StandardCharsets;
+import java.nio.charset.Charset;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+
 /**
  * OCR处理服务实现类
  * 实现OCR处理的核心功能
@@ -178,17 +199,47 @@ public class OcrProcessingServiceImpl implements OcrProcessingService {
             
             // 常规处理流程
             String extractedText;
-            if (fileName.endsWith(".pdf")) {
-                // PDF处理
-                extractedText = extractTextFromPdf(filePath, forceOcr).get();
+            Map<String, Object> pythonResult = null;
 
-                // 如果PDF文本提取失败或为空，且启用了Docling，则使用Docling
-                log.debug("检查是否需要使用Docling: extractedText={}, useDocling={}",
-                    (extractedText == null ? "null" : "length=" + extractedText.length()), useDocling);
-                if ((extractedText == null || extractedText.trim().isEmpty()) && useDocling) {
-                    log.info("PDF文本提取为空，尝试使用Docling进行OCR");
-                    extractedText = processWithDocling(filePath, language, geminiModel).get();
+            if (fileName.endsWith(".pdf")) {
+                // PDF处理 - 总是调用Python服务以确保图像提取
+                log.info("PDF文件检测到，调用Python服务进行完整处理（包括图像提取）");
+
+                // 调用Python服务进行完整的PDF处理
+                pythonResult = callPythonServiceForPdf(filePath, usePypdf2, useDocling, useGemini, forceOcr, language, geminiModel);
+
+                if (pythonResult != null && pythonResult.containsKey("full_text")) {
+                    extractedText = (String) pythonResult.get("full_text");
+                    log.info("从Python服务获取文本，长度: {}", extractedText != null ? extractedText.length() : 0);
+                } else {
+                    // 如果Python服务失败，回退到Java本地处理
+                    log.warn("Python服务处理失败，回退到Java本地PDF处理");
+                    extractedText = extractTextFromPdf(filePath, forceOcr).get();
+
+                    // 如果PDF文本提取失败或为空，且启用了Docling，则使用Docling
+                    log.debug("检查是否需要使用Docling: extractedText={}, useDocling={}",
+                        (extractedText == null ? "null" : "length=" + extractedText.length()), useDocling);
+                    if ((extractedText == null || extractedText.trim().isEmpty()) && useDocling) {
+                        log.info("PDF文本提取为空，尝试使用Docling进行OCR");
+                        extractedText = processWithDocling(filePath, language, geminiModel).get();
+                    }
                 }
+            } else if (isExcelFile(fileName)) {
+                // Excel文件处理
+                log.info("检测到Excel文件，使用Apache POI进行文本提取");
+                extractedText = extractTextFromExcel(filePath, language, geminiModel).get();
+            } else if (isWordFile(fileName)) {
+                // Word文档处理
+                log.info("检测到Word文档，使用Apache POI进行文本提取");
+                extractedText = extractTextFromWord(filePath, language, geminiModel).get();
+            } else if (isTextFile(fileName)) {
+                // 纯文本文件处理
+                log.info("检测到文本文件，直接读取文本内容");
+                extractedText = extractTextFromTextFile(filePath).get();
+            } else if (isCsvFile(fileName)) {
+                // CSV文件处理
+                log.info("检测到CSV文件，解析表格数据");
+                extractedText = extractTextFromCsv(filePath).get();
             } else if (isImageFile(fileName) && useDocling) {
                 // 图像处理
                 extractedText = processWithDocling(filePath, language, geminiModel).get();
@@ -213,6 +264,15 @@ public class OcrProcessingServiceImpl implements OcrProcessingService {
                 log.warn("常规方法未能提取到文本: {}", filePath);
                 result.put("extractedText", "");
                 result.put("warning", "常规方法未能提取到文本内容");
+            }
+
+            // 如果从Python服务获取了图像信息，添加到结果中
+            if (pythonResult != null && pythonResult.containsKey("images")) {
+                List<?> images = (List<?>) pythonResult.get("images");
+                result.put("images", images);
+                log.info("添加图像信息到结果中，图像数量: {}", images.size());
+            } else {
+                result.put("images", new ArrayList<>());
             }
 
             // 使用Gemini进行处理（仅用于文本分析，不再进行OCR）
@@ -282,6 +342,103 @@ public class OcrProcessingServiceImpl implements OcrProcessingService {
         } catch (IOException e) {
             log.error("PDF文本提取失败: {}", filePath, e);
             return CompletableFuture.completedFuture("");
+        }
+    }
+
+    /**
+     * 调用Python服务进行PDF完整处理（包括图像提取）
+     *
+     * @param filePath PDF文件路径
+     * @param usePypdf2 是否使用PyPDF2
+     * @param useDocling 是否使用Docling
+     * @param useGemini 是否使用Gemini
+     * @param forceOcr 是否强制OCR
+     * @param language 语言代码
+     * @param geminiModel Gemini模型选择
+     * @return 完整的处理结果，包含文本和图像信息
+     */
+    private Map<String, Object> callPythonServiceForPdf(Path filePath, boolean usePypdf2, boolean useDocling,
+                                                       boolean useGemini, boolean forceOcr, String language, String geminiModel) {
+        log.info("调用Python服务处理PDF: {}, 参数: pypdf2={}, docling={}, gemini={}, forceOcr={}, language={}, model={}",
+                filePath, usePypdf2, useDocling, useGemini, forceOcr, language, geminiModel);
+
+        try {
+            // 读取文件
+            byte[] fileBytes = Files.readAllBytes(filePath);
+
+            // 准备请求
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+
+            MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+            body.add("file", new ByteArrayResource(fileBytes) {
+                @Override
+                public String getFilename() {
+                    return filePath.getFileName().toString();
+                }
+            });
+
+            // 传递用户选择的参数（字符串格式）
+            body.add("use_pypdf2", String.valueOf(usePypdf2));
+            body.add("use_docling", String.valueOf(useDocling));
+            body.add("use_gemini", String.valueOf(useGemini));
+            body.add("force_ocr", String.valueOf(forceOcr));
+            body.add("language", language);
+            body.add("gemini_model", geminiModel);
+            body.add("use_vision_ocr", "false");  // 常规处理模式
+
+            HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, headers);
+
+            // 调用Python OCR服务
+            ResponseEntity<String> response = restTemplate.postForEntity(
+                doclingUrl,
+                requestEntity,
+                String.class
+            );
+
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                // 解析JSON响应
+                JsonNode jsonNode = objectMapper.readTree(response.getBody());
+
+                Map<String, Object> result = new HashMap<>();
+
+                // 提取文本
+                String fullText = jsonNode.path("full_text").asText("");
+                result.put("full_text", fullText);
+
+                // 提取图像信息
+                JsonNode imagesNode = jsonNode.path("images");
+                if (imagesNode.isArray() && imagesNode.size() > 0) {
+                    List<Map<String, Object>> images = new ArrayList<>();
+                    for (JsonNode imageNode : imagesNode) {
+                        Map<String, Object> imageInfo = new HashMap<>();
+                        imageInfo.put("image_id", imageNode.path("image_id").asText(""));
+                        imageInfo.put("page_number", imageNode.path("page_number").asInt(1));
+                        imageInfo.put("description", imageNode.path("description").asText(""));
+                        imageInfo.put("mime_type", imageNode.path("mime_type").asText(""));
+                        imageInfo.put("data", imageNode.path("data").asText(""));
+                        images.add(imageInfo);
+                    }
+                    result.put("images", images);
+                    log.info("从Python服务获取到{}个图像", images.size());
+                } else {
+                    result.put("images", new ArrayList<>());
+                }
+
+                // 提取其他信息
+                result.put("processing_info", jsonNode.path("processing_info"));
+                result.put("document_metadata", jsonNode.path("document_metadata"));
+
+                log.info("Python服务PDF处理成功: {}, 文本长度: {}, 图像数量: {}",
+                        filePath, fullText.length(), ((List<?>) result.get("images")).size());
+                return result;
+            } else {
+                log.error("Python服务PDF处理失败: {}, 状态码: {}", filePath, response.getStatusCode());
+                return null;
+            }
+        } catch (Exception e) {
+            log.error("调用Python服务处理PDF异常: {}", filePath, e);
+            return null;
         }
     }
 
@@ -610,5 +767,346 @@ public class OcrProcessingServiceImpl implements OcrProcessingService {
                lowerCaseFileName.endsWith(".bmp") ||
                lowerCaseFileName.endsWith(".tiff") ||
                lowerCaseFileName.endsWith(".tif");
+    }
+
+    /**
+     * 判断文件是否为Excel文件
+     *
+     * @param fileName 文件名
+     * @return 是否为Excel文件
+     */
+    private boolean isExcelFile(String fileName) {
+        String lowerCaseFileName = fileName.toLowerCase();
+        return lowerCaseFileName.endsWith(".xlsx") ||
+               lowerCaseFileName.endsWith(".xls") ||
+               lowerCaseFileName.endsWith(".xlsm");
+    }
+
+    /**
+     * 判断文件是否为Word文档
+     *
+     * @param fileName 文件名
+     * @return 是否为Word文档
+     */
+    private boolean isWordFile(String fileName) {
+        String lowerCaseFileName = fileName.toLowerCase();
+        return lowerCaseFileName.endsWith(".docx") ||
+               lowerCaseFileName.endsWith(".doc");
+    }
+
+    /**
+     * 判断文件是否为纯文本文件
+     *
+     * @param fileName 文件名
+     * @return 是否为纯文本文件
+     */
+    private boolean isTextFile(String fileName) {
+        String lowerCaseFileName = fileName.toLowerCase();
+        return lowerCaseFileName.endsWith(".txt") ||
+               lowerCaseFileName.endsWith(".md") ||
+               lowerCaseFileName.endsWith(".rtf");
+    }
+
+    /**
+     * 判断文件是否为CSV文件
+     *
+     * @param fileName 文件名
+     * @return 是否为CSV文件
+     */
+    private boolean isCsvFile(String fileName) {
+        String lowerCaseFileName = fileName.toLowerCase();
+        return lowerCaseFileName.endsWith(".csv") ||
+               lowerCaseFileName.endsWith(".tsv");
+    }
+
+    /**
+     * 从Excel文件中提取文本内容
+     *
+     * @param filePath Excel文件路径
+     * @param language 语言代码
+     * @param geminiModel Gemini模型选择
+     * @return 提取的文本内容
+     */
+    @Async
+    public CompletableFuture<String> extractTextFromExcel(Path filePath, String language, String geminiModel) {
+        log.info("从Excel文件提取文本: {}", filePath);
+
+        try (FileInputStream fis = new FileInputStream(filePath.toFile())) {
+            Workbook workbook = null;
+            String fileName = filePath.getFileName().toString().toLowerCase();
+
+            // 根据文件扩展名选择合适的工作簿类型
+            if (fileName.endsWith(".xlsx") || fileName.endsWith(".xlsm")) {
+                workbook = new XSSFWorkbook(fis);
+            } else if (fileName.endsWith(".xls")) {
+                workbook = new HSSFWorkbook(fis);
+            } else {
+                throw new UnsupportedOperationException("不支持的Excel文件格式: " + fileName);
+            }
+
+            StringBuilder textBuilder = new StringBuilder();
+
+            // 遍历所有工作表
+            for (int sheetIndex = 0; sheetIndex < workbook.getNumberOfSheets(); sheetIndex++) {
+                Sheet sheet = workbook.getSheetAt(sheetIndex);
+                String sheetName = sheet.getSheetName();
+
+                log.debug("处理工作表: {}", sheetName);
+                textBuilder.append("=== 工作表: ").append(sheetName).append(" ===\n");
+
+                // 遍历所有行
+                for (Row row : sheet) {
+                    StringBuilder rowText = new StringBuilder();
+                    boolean hasContent = false;
+
+                    // 遍历行中的所有单元格
+                    for (Cell cell : row) {
+                        String cellValue = getCellValueAsString(cell);
+                        if (cellValue != null && !cellValue.trim().isEmpty()) {
+                            if (hasContent) {
+                                rowText.append("\t");
+                            }
+                            rowText.append(cellValue);
+                            hasContent = true;
+                        }
+                    }
+
+                    // 如果行有内容，添加到文本中
+                    if (hasContent) {
+                        textBuilder.append(rowText.toString()).append("\n");
+                    }
+                }
+
+                textBuilder.append("\n");
+            }
+
+            workbook.close();
+
+            String extractedText = textBuilder.toString().trim();
+            log.info("Excel文本提取成功: {}, 提取文本长度: {}", filePath, extractedText.length());
+
+            return CompletableFuture.completedFuture(extractedText);
+
+        } catch (Exception e) {
+            log.error("Excel文本提取失败: {}", filePath, e);
+            return CompletableFuture.completedFuture("");
+        }
+    }
+
+    /**
+     * 获取单元格的字符串值
+     *
+     * @param cell 单元格
+     * @return 单元格的字符串值
+     */
+    private String getCellValueAsString(Cell cell) {
+        if (cell == null) {
+            return "";
+        }
+
+        switch (cell.getCellType()) {
+            case STRING:
+                return cell.getStringCellValue();
+            case NUMERIC:
+                if (DateUtil.isCellDateFormatted(cell)) {
+                    return cell.getDateCellValue().toString();
+                } else {
+                    // 避免科学计数法显示
+                    double numericValue = cell.getNumericCellValue();
+                    if (numericValue == Math.floor(numericValue)) {
+                        return String.valueOf((long) numericValue);
+                    } else {
+                        return String.valueOf(numericValue);
+                    }
+                }
+            case BOOLEAN:
+                return String.valueOf(cell.getBooleanCellValue());
+            case FORMULA:
+                try {
+                    return cell.getStringCellValue();
+                } catch (Exception e) {
+                    try {
+                        return String.valueOf(cell.getNumericCellValue());
+                    } catch (Exception e2) {
+                        return cell.getCellFormula();
+                    }
+                }
+            case BLANK:
+            case _NONE:
+            default:
+                return "";
+        }
+    }
+
+    /**
+     * 从Word文档中提取文本内容
+     *
+     * @param filePath Word文档路径
+     * @param language 语言代码
+     * @param geminiModel Gemini模型选择
+     * @return 提取的文本内容
+     */
+    @Async
+    public CompletableFuture<String> extractTextFromWord(Path filePath, String language, String geminiModel) {
+        log.info("从Word文档提取文本: {}", filePath);
+
+        try {
+            String fileName = filePath.getFileName().toString().toLowerCase();
+            StringBuilder textBuilder = new StringBuilder();
+
+            if (fileName.endsWith(".docx")) {
+                // 处理新版Word文档 (.docx)
+                try (FileInputStream fis = new FileInputStream(filePath.toFile());
+                     XWPFDocument document = new XWPFDocument(fis)) {
+
+                    // 提取段落文本
+                    for (XWPFParagraph paragraph : document.getParagraphs()) {
+                        String paragraphText = paragraph.getText();
+                        if (paragraphText != null && !paragraphText.trim().isEmpty()) {
+                            textBuilder.append(paragraphText).append("\n");
+                        }
+                    }
+
+                    // 提取表格文本
+                    for (XWPFTable table : document.getTables()) {
+                        textBuilder.append("\n=== 表格 ===\n");
+                        for (XWPFTableRow row : table.getRows()) {
+                            StringBuilder rowText = new StringBuilder();
+                            for (XWPFTableCell cell : row.getTableCells()) {
+                                String cellText = cell.getText();
+                                if (cellText != null && !cellText.trim().isEmpty()) {
+                                    if (rowText.length() > 0) {
+                                        rowText.append("\t");
+                                    }
+                                    rowText.append(cellText);
+                                }
+                            }
+                            if (rowText.length() > 0) {
+                                textBuilder.append(rowText.toString()).append("\n");
+                            }
+                        }
+                        textBuilder.append("\n");
+                    }
+                }
+            } else if (fileName.endsWith(".doc")) {
+                // 处理旧版Word文档 (.doc)
+                try (FileInputStream fis = new FileInputStream(filePath.toFile());
+                     HWPFDocument document = new HWPFDocument(fis);
+                     WordExtractor extractor = new WordExtractor(document)) {
+
+                    String text = extractor.getText();
+                    if (text != null && !text.trim().isEmpty()) {
+                        textBuilder.append(text);
+                    }
+                }
+            } else {
+                throw new UnsupportedOperationException("不支持的Word文档格式: " + fileName);
+            }
+
+            String extractedText = textBuilder.toString().trim();
+            log.info("Word文档文本提取成功: {}, 提取文本长度: {}", filePath, extractedText.length());
+
+            return CompletableFuture.completedFuture(extractedText);
+
+        } catch (Exception e) {
+            log.error("Word文档文本提取失败: {}", filePath, e);
+            return CompletableFuture.completedFuture("");
+        }
+    }
+
+    /**
+     * 从纯文本文件中提取文本内容
+     *
+     * @param filePath 文本文件路径
+     * @return 提取的文本内容
+     */
+    @Async
+    public CompletableFuture<String> extractTextFromTextFile(Path filePath) {
+        log.info("从文本文件提取内容: {}", filePath);
+
+        try {
+            // 尝试使用UTF-8编码读取
+            String text = Files.readString(filePath, StandardCharsets.UTF_8);
+
+            // 如果文本为空或包含乱码，尝试其他编码
+            if (text.trim().isEmpty() || containsGarbledText(text)) {
+                log.info("UTF-8读取失败，尝试使用系统默认编码");
+                text = Files.readString(filePath);
+            }
+
+            log.info("文本文件读取成功: {}, 文本长度: {}", filePath, text.length());
+            return CompletableFuture.completedFuture(text);
+
+        } catch (Exception e) {
+            log.error("文本文件读取失败: {}", filePath, e);
+            return CompletableFuture.completedFuture("");
+        }
+    }
+
+    /**
+     * 从CSV文件中提取文本内容
+     *
+     * @param filePath CSV文件路径
+     * @return 提取的文本内容
+     */
+    @Async
+    public CompletableFuture<String> extractTextFromCsv(Path filePath) {
+        log.info("从CSV文件提取内容: {}", filePath);
+
+        try {
+            String fileName = filePath.getFileName().toString().toLowerCase();
+            String delimiter = fileName.endsWith(".tsv") ? "\t" : ",";
+
+            List<String> lines = Files.readAllLines(filePath, StandardCharsets.UTF_8);
+            StringBuilder textBuilder = new StringBuilder();
+
+            textBuilder.append("=== CSV/TSV 数据 ===\n");
+
+            for (int i = 0; i < lines.size(); i++) {
+                String line = lines.get(i);
+                if (line != null && !line.trim().isEmpty()) {
+                    // 简单的CSV解析（不处理引号内的逗号）
+                    String[] fields = line.split(delimiter);
+                    StringBuilder rowText = new StringBuilder();
+
+                    for (String field : fields) {
+                        if (rowText.length() > 0) {
+                            rowText.append(" | ");
+                        }
+                        rowText.append(field.trim());
+                    }
+
+                    if (i == 0) {
+                        textBuilder.append("列标题: ").append(rowText.toString()).append("\n");
+                    } else {
+                        textBuilder.append("第").append(i).append("行: ").append(rowText.toString()).append("\n");
+                    }
+                }
+            }
+
+            String extractedText = textBuilder.toString().trim();
+            log.info("CSV文件解析成功: {}, 提取文本长度: {}", filePath, extractedText.length());
+
+            return CompletableFuture.completedFuture(extractedText);
+
+        } catch (Exception e) {
+            log.error("CSV文件解析失败: {}", filePath, e);
+            return CompletableFuture.completedFuture("");
+        }
+    }
+
+    /**
+     * 检查文本是否包含乱码
+     *
+     * @param text 要检查的文本
+     * @return 是否包含乱码
+     */
+    private boolean containsGarbledText(String text) {
+        // 简单的乱码检测：检查是否包含大量替换字符
+        long replacementCharCount = text.chars()
+            .filter(ch -> ch == 0xFFFD) // Unicode替换字符
+            .count();
+
+        return replacementCharCount > text.length() * 0.1; // 如果超过10%是替换字符，认为是乱码
     }
 }

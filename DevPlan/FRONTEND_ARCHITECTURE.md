@@ -21,6 +21,7 @@
 src/
 ├── assets/            # 静态资源 (图片、字体等，会被Vite处理)
 ├── components/        # 可复用的全局UI组件
+│   └── RichTextDisplay.vue # 富文本显示组件（支持图像内嵌）
 ├── layouts/           # 页面布局组件
 │   └── AppLayout.vue  # 主应用布局，包含导航菜单、页眉和页脚
 ├── router/            # 路由配置
@@ -81,6 +82,7 @@ src/
     -   **页面组件 (`src/views/`)**: 对应各个路由，是具体页面的容器和逻辑单元。
     -   **布局组件 (`src/layouts/`)**: 定义应用的整体页面结构，如包含页眉、页脚、侧边栏的布局。
     -   **可复用组件 (`src/components/`)**: 存放应用中通用的、可被多处复用的UI片段。
+    -   `RichTextDisplay.vue`: 富文本显示组件，支持文本与图像混合显示。
 -   **样式**:
     -   全局样式在 `src/style.css` 中定义。
     -   组件内部使用 `<style scoped>` 来编写局部作用域的CSS，避免样式冲突。

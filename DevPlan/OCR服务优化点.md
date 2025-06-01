@@ -97,11 +97,114 @@ INFO:__main__:Gemini Vision OCR 完成，总提取文本长度: 3728, 总页数:
 
 3.原始JSON显示去除，用户不需要（已移除）
 
-4，表格内容？现在测试了几个pdf，表格内容都为空，如不需要就取消，检查一下表格内容的逻辑（已移除）
+4，表格内容？现在测试了几个pdf，表格内容都为空，如不需要就取消，检查一下表格内容的逻辑（已移除-已解决）
 
 
-5.目前只有pdf和图片？其余的文档必要性，需要word，ppt等？
+5.目前只有pdf和图片？其余的文档必要性，需要word，ppt等？（已解决，目前支持各种文本+word）
 
-6.批量上传？批量解析的可行性？文本的话pypdf擅长快速解析吧
+6.批量上传？批量解析的可行性？文本的话pypdf擅长快速解析吧（已解决）
 
-7.还想把pdf中如果有图片，也输出出来。docling？还是？
+7.还想把pdf，文档中（非扫描，扫描的话肯定就不行了吧）如果有图片，也输出出来。docling？还是？（现在docling很鸡肋，没法用，也不知道能干吗，OCRgemini完全可以胜任，如果能输出图片形式还有点作用）
+
+8.可以用户自定义OCRprompt
+
+9.能否pypdf和gemini混合？pypdf提取图像+gemini分析文档等等（其实现在pypd也能提取文本+提取图像）
+
+10.pypdf+gemini分析会无限加载（待继续测试）
+
+## 📈 最新更新记录
+
+
+
+
+
+
+
+### ✅ Excel文件支持（2025-06-01）
+**新增功能**：
+- **后端Java**：添加Excel文件类型检测和Apache POI处理
+- **Python微服务**：新增`process_excel`函数，支持pandas+openpyxl处理
+- **前端界面**：更新文件类型支持和上传提示
+
+**技术实现**：
+- Java层：使用Apache POI（poi-ooxml, poi-scratchpad）
+- Python层：使用pandas + openpyxl/xlrd引擎
+- 支持多工作表处理，每个工作表作为一页
+- 表格数据结构化输出，保持原始格式
+- 大文件优化：限制处理行数避免超长处理
+
+**文件修改**：
+- `pom.xml`：添加Apache POI依赖
+- `OcrProcessingServiceImpl.java`：添加Excel处理逻辑
+- `ocr_service.py`：添加Excel处理函数和API支持
+- `OcrPage.vue`：更新文件类型支持
+- `requirements.txt`：添加pandas、openpyxl等依赖
+
+### ✅ Word文档和文本文件支持（2025-06-01）
+**新增功能**：
+- **Word文档支持**：.docx/.doc格式完整支持
+- **文本文件支持**：.txt/.md/.rtf格式支持
+- **CSV/TSV支持**：表格数据文件支持
+- **多编码支持**：自动检测文件编码
+
+**技术实现**：
+- **Word处理**：
+  - Java层：Apache POI XWPF/HWPF API
+  - Python层：python-docx库
+  - 支持段落、表格、格式提取
+- **文本处理**：
+  - 多编码自动检测（UTF-8, GBK, GB2312等）
+  - CSV/TSV智能解析
+  - Markdown格式支持
+- **统一接口**：所有文件类型使用相同的API响应格式
+
+**文件修改**：
+- `OcrProcessingServiceImpl.java`：添加Word和文本文件处理方法
+- `ocr_service.py`：添加`process_word`和`process_text_file`函数
+- `OcrPage.vue`：更新支持的文件类型列表
+- API状态信息：更新版本号至1.3.0
+
+**支持的文件格式总览**：
+- ✅ **PDF文档**：PyPDF2 + Docling + Gemini Vision OCR
+- ✅ **图片文件**：PNG, JPG, JPEG, TIFF, BMP（Docling + Gemini）
+- ✅ **Excel文件**：.xlsx, .xls, .xlsm（Apache POI + pandas）
+- ✅ **Word文档**：.docx, .doc（Apache POI + python-docx）
+- ✅ **文本文件**：.txt, .md, .rtf（多编码支持）
+- ✅ **表格文件**：.csv, .tsv（智能解析）
+- 📋 **PowerPoint**：.pptx, .ppt（计划中）
+
+### ✅ 富文本显示功能实现（2025-01-27）
+**重大功能更新**：实现图像在文本内容中的正确位置显示 ⭐
+
+**技术实现**：
+- **Python服务修改**：
+  - 在图像提取过程中，向文本内容插入`[IMAGE:id:description]`标记
+  - 重新构建包含图像标记的全文内容
+  - 确保图像标记位置与实际图像在文档中的位置对应
+
+- **前端组件开发**：
+  - 创建`RichTextDisplay.vue`专用富文本显示组件
+  - 实现图像标记解析：使用正则表达式识别`[IMAGE:id:description]`模式
+  - 混合内容渲染：文本段落与图像按顺序正确显示
+  - 响应式设计：图像自适应大小，支持移动端显示
+
+- **用户体验提升**：
+  - **直观显示**：图像不再分离在单独标签页，而是嵌入文本正确位置
+  - **视觉效果**：图像带有边框、阴影和描述文字
+  - **错误处理**：图像加载失败时优雅降级
+
+**文件修改记录**：
+- `ocr_service.py`：修改图像提取逻辑，添加文本标记插入
+- `my-ai-platform-frontend/src/components/RichTextDisplay.vue`：新建组件
+- `my-ai-platform-frontend/src/views/OcrPage.vue`：集成富文本组件
+
+**测试结果**：
+- ✅ 埃森哲PDF文档测试成功
+- ✅ 紫色横幅图像正确显示在文本开头
+- ✅ 日语文本完整保留
+- ⚠️ 图像比例略有拉伸（待优化）
+
+**下一步优化**：
+1. 调整图像显示比例，避免变形
+2. 优化图像位置算法，更精确定位
+3. 支持多图像文档的复杂布局

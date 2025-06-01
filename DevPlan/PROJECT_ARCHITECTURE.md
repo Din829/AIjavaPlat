@@ -290,3 +290,90 @@ AIplatJava/
 - 用户需要提供自己的AI服务API Token
 - 所有功能应遵循最小权限原则
 - 代码应遵循良好的编码实践和设计模式
+
+## 📈 架构更新记录
+
+### ✅ Excel文件支持（2025-01-27）
+
+**后端架构扩展**：
+- **依赖新增**：添加Apache POI库支持（poi-ooxml, poi-scratchpad）
+- **文件类型检测**：扩展`OcrProcessingServiceImpl`支持Excel格式识别
+- **处理引擎**：新增Excel文本提取功能，支持多工作表处理
+
+**Python微服务扩展**：
+- **依赖新增**：添加pandas、openpyxl、xlrd等Excel处理库
+- **处理函数**：新增`process_excel`函数，支持Excel文件解析
+- **API扩展**：更新OCR上传端点，支持Excel文件类型检测和处理
+
+**前端架构扩展**：
+- **文件类型支持**：更新文件上传组件，支持.xlsx/.xls/.xlsm格式
+- **用户界面**：更新上传提示文本，包含Excel文件格式说明
+
+**支持的文档格式**：
+- ✅ PDF文档：PyPDF2 + Docling + Gemini Vision OCR
+- ✅ 图片文件：PNG, JPG, JPEG, TIFF, BMP（Docling + Gemini）
+- ✅ Excel文件：.xlsx, .xls, .xlsm（Apache POI + pandas）
+- ✅ Word文档：.docx, .doc（Apache POI + python-docx）
+- ✅ 文本文件：.txt, .md, .rtf（多编码支持）
+- ✅ 表格文件：.csv, .tsv（智能解析）
+- 📋 PowerPoint：.pptx, .ppt（计划中）
+
+**技术栈更新**：
+- Java后端：Spring Boot 3.4.5 + Apache POI 5.2.5
+- Python微服务：FastAPI + pandas 2.1.0 + openpyxl 3.1.0 + python-docx
+- 前端：Vue 3 + TypeScript（支持7种主要文档格式）
+
+### ✅ Word文档和文本文件支持（2025-01-27）
+
+**后端架构扩展**：
+- **Word文档处理**：
+  - Java层：Apache POI XWPF（.docx）和HWPF（.doc）API
+  - Python层：python-docx库作为备用处理引擎
+  - 功能：段落提取、表格解析、格式保持
+- **文本文件处理**：
+  - 多编码自动检测：UTF-8, GBK, GB2312, UTF-16, Latin-1
+  - CSV/TSV智能解析：分隔符识别、表格结构化
+  - Markdown和RTF格式支持
+
+**Python微服务扩展**：
+- **新增处理函数**：
+  - `process_word()`：Word文档文本和表格提取
+  - `process_text_file()`：文本文件多编码处理
+- **API端点扩展**：更新文件类型检测，支持6种新格式
+- **服务状态更新**：版本号升级至1.3.0
+
+**前端架构扩展**：
+- **文件类型支持**：扩展至7种主要格式
+- **用户界面**：更新上传提示和文件类型说明
+- **统一体验**：所有文件类型使用相同的处理界面
+
+### ✅ 富文本显示功能实现（2025-01-27）
+
+**架构重大更新**：实现图像在文本内容中的正确位置显示 ⭐
+
+**后端架构扩展**：
+- **Python微服务增强**：
+  - 图像提取逻辑优化：在文本中插入`[IMAGE:id:description]`位置标记
+  - 全文重构功能：重新构建包含图像标记的完整文本内容
+  - 图像数据管理：维护图像ID与Base64数据的映射关系
+
+**前端架构扩展**：
+- **组件架构升级**：
+  - 新增`RichTextDisplay.vue`可复用组件
+  - 实现图像标记解析引擎（正则表达式驱动）
+  - 混合内容渲染系统：文本段落与图像按序显示
+- **用户体验革新**：
+  - 图像内嵌显示：替代传统的分离式标签页显示
+  - 响应式图像布局：自适应不同屏幕尺寸
+  - 错误处理机制：图像加载失败时的优雅降级
+
+**技术实现细节**：
+- **标记系统**：`[IMAGE:imageId:description]`格式的文本标记
+- **解析算法**：正则表达式匹配和内容分段处理
+- **渲染引擎**：Vue 3组合式API + TypeScript类型安全
+- **样式系统**：CSS Grid/Flexbox响应式布局
+
+**架构影响**：
+- **组件复用性**：RichTextDisplay可用于其他需要富文本显示的场景
+- **扩展性**：标记系统可扩展支持其他媒体类型（视频、音频等）
+- **性能优化**：图像懒加载和错误处理机制

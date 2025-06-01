@@ -46,13 +46,15 @@ except ImportError:
 
 # 2. Docling - 用于OCR和文档结构解析
 DOCLING_AVAILABLE = False
-try:
-    from docling.document_converter import DocumentConverter
-    DOCLING_AVAILABLE = True
-    logger.info("Successfully imported DocumentConverter from docling.")
-except ImportError as e:
-    logger.warning(f"Failed to import Docling components: {e}")
-    logger.warning("Docling OCR processing will be disabled.")
+# 暂时禁用Docling以避免NumPy兼容性问题
+# try:
+#     from docling.document_converter import DocumentConverter
+#     DOCLING_AVAILABLE = True
+#     logger.info("Successfully imported DocumentConverter from docling.")
+# except ImportError as e:
+#     logger.warning(f"Failed to import Docling components: {e}")
+#     logger.warning("Docling OCR processing will be disabled.")
+logger.info("Docling temporarily disabled due to NumPy compatibility issues.")
 
 # 3. Google Gemini API - 用于高级文本理解和分析
 GEMINI_ENABLED = False
@@ -63,6 +65,27 @@ try:
     GEMINI_ENABLED = True
 except ImportError:
     logger.warning("google.generativeai module not found. Gemini enhancements will be disabled.")
+
+# 4. Excel文件处理 - 用于处理Excel文档
+EXCEL_PROCESSING_AVAILABLE = False
+try:
+    import pandas as pd
+    import openpyxl
+    EXCEL_PROCESSING_AVAILABLE = True
+    logger.info("Successfully imported pandas and openpyxl for Excel processing.")
+except ImportError as e:
+    logger.warning(f"Failed to import Excel processing libraries: {e}")
+    logger.warning("Excel file processing will be disabled.")
+
+# 5. Word文档处理 - 用于处理Word文档（为未来扩展准备）
+WORD_PROCESSING_AVAILABLE = False
+try:
+    import docx
+    WORD_PROCESSING_AVAILABLE = True
+    logger.info("Successfully imported python-docx for Word processing.")
+except ImportError as e:
+    logger.warning(f"Failed to import Word processing libraries: {e}")
+    logger.warning("Word file processing will be disabled.")
 
 # --- FastAPI 应用实例 ---
 app = FastAPI(title="AI Platform OCR Microservice")
@@ -309,6 +332,83 @@ def cleanup_temp_file(file_path: str):
             os.remove(file_path)
     except Exception as e:
         logger.error(f"Error cleaning up temp file {file_path}: {e}")
+
+def extract_images_from_pdf(file_path: str) -> List[ImageInfo]:
+    """
+    使用PyMuPDF从PDF文件中提取嵌入的图像
+
+    Args:
+        file_path: PDF文件路径
+
+    Returns:
+        包含图像信息的列表
+    """
+    images = []
+
+    try:
+        # 使用PyMuPDF打开PDF文件
+        doc = fitz.open(file_path)
+        logger.info(f"开始从PDF提取图像，共{len(doc)}页")
+
+        for page_num in range(len(doc)):
+            page = doc.load_page(page_num)
+
+            # 获取页面中的图像列表
+            image_list = page.get_images()
+            logger.info(f"第{page_num + 1}页发现{len(image_list)}个图像")
+
+            for img_index, img in enumerate(image_list):
+                try:
+                    # 获取图像引用
+                    xref = img[0]
+
+                    # 提取图像数据
+                    pix = fitz.Pixmap(doc, xref)
+
+                    # 检查图像格式，避免CMYK格式问题
+                    if pix.n - pix.alpha < 4:  # 确保不是CMYK格式
+                        # 转换为PNG格式的字节数据
+                        if pix.alpha:
+                            # 如果有透明通道，保持PNG格式
+                            img_data = pix.tobytes("png")
+                            mime_type = "image/png"
+                        else:
+                            # 如果没有透明通道，可以使用JPEG格式（更小）
+                            img_data = pix.tobytes("jpeg")
+                            mime_type = "image/jpeg"
+
+                        # 转换为Base64编码
+                        img_base64 = base64.b64encode(img_data).decode('utf-8')
+
+                        # 创建图像信息对象
+                        image_info = ImageInfo(
+                            image_id=f"page_{page_num + 1}_img_{img_index + 1}",
+                            page_number=page_num + 1,
+                            description=f"第{page_num + 1}页的图像{img_index + 1}",
+                            mime_type=mime_type,
+                            data=img_base64
+                        )
+
+                        images.append(image_info)
+                        logger.info(f"成功提取图像: {image_info.image_id}, 大小: {len(img_data)} bytes")
+                    else:
+                        logger.warning(f"跳过CMYK格式图像: 第{page_num + 1}页图像{img_index + 1}")
+
+                    # 释放Pixmap内存
+                    pix = None
+
+                except Exception as e:
+                    logger.error(f"提取第{page_num + 1}页图像{img_index + 1}时出错: {e}")
+                    continue
+
+        doc.close()
+        logger.info(f"图像提取完成，共提取{len(images)}个图像")
+
+    except Exception as e:
+        logger.error(f"从PDF提取图像时发生错误: {e}")
+        return []
+
+    return images
 
 def extract_text_with_pypdf2(file_path: str) -> Dict[str, Any]:
     """
@@ -1199,6 +1299,373 @@ def process_with_gemini(pdf_path: str, prompt: Optional[str] = None, language: s
         logger.exception(f"Error processing file with Gemini: {e}")
         return {"error": f"Error processing file with Gemini: {str(e)}"}
 
+def process_word(file_path: str, language: str = "auto", gemini_model: str = "gemini-1.5-flash") -> Dict[str, Any]:
+    """
+    处理Word文档，提取文本内容和表格数据
+
+    Args:
+        file_path: Word文档文件路径
+        language: 语言代码
+        gemini_model: Gemini模型选择
+
+    Returns:
+        包含处理结果的字典
+    """
+    start_time = datetime.now()
+    logger.info(f"开始处理Word文档: {file_path}")
+
+    try:
+        if not WORD_PROCESSING_AVAILABLE:
+            return {"error": "Word processing libraries not available"}
+
+        # 读取Word文档
+        doc = docx.Document(file_path)
+
+        # 提取文本内容
+        full_text_parts = []
+        tables_data = []
+
+        # 提取段落文本
+        for paragraph in doc.paragraphs:
+            if paragraph.text.strip():
+                full_text_parts.append(paragraph.text.strip())
+
+        # 提取表格数据
+        for table_idx, table in enumerate(doc.tables):
+            table_data = []
+            for row in table.rows:
+                row_data = []
+                for cell in row.cells:
+                    row_data.append(cell.text.strip())
+                table_data.append(row_data)
+
+            if table_data:
+                tables_data.append({
+                    "table_id": f"table_{table_idx + 1}",
+                    "rows": table_data,
+                    "raw_text": "\n".join(["\t".join(row) for row in table_data])
+                })
+
+                # 将表格内容也添加到全文中
+                full_text_parts.append(f"\n=== 表格 {table_idx + 1} ===")
+                for row in table_data:
+                    full_text_parts.append("\t".join(row))
+
+        full_text = "\n".join(full_text_parts)
+
+        # 创建页面内容（Word文档作为单页处理）
+        pages = [{
+            "page_number": 1,
+            "text": full_text,
+            "tables": [],
+            "images": []
+        }]
+
+        # 处理信息
+        end_time = datetime.now()
+        processing_time = (end_time - start_time).total_seconds()
+
+        processing_info = {
+            "pypdf2_used": False,
+            "docling_used": False,
+            "gemini_used": False,
+            "force_ocr_used": False,
+            "processing_time_seconds": processing_time,
+            "status": "success",
+            "error_message": None
+        }
+
+        # 文档元数据
+        document_metadata = {
+            "original_filename": os.path.basename(file_path),
+            "processed_at": datetime.now().isoformat(),
+            "page_count": 1,
+            "source_format": "word",
+            "language": language
+        }
+
+        result = {
+            "document_metadata": document_metadata,
+            "processing_info": processing_info,
+            "pages": pages,
+            "full_text": full_text,
+            "tables": tables_data,
+            "images": []
+        }
+
+        logger.info(f"Word文档处理完成: {file_path}, 提取文本长度: {len(full_text)}")
+        return result
+
+    except Exception as e:
+        logger.exception(f"处理Word文档时发生错误: {file_path}")
+        return {"error": f"处理Word文档失败: {str(e)}"}
+
+def process_text_file(file_path: str, file_ext: str, language: str = "auto") -> Dict[str, Any]:
+    """
+    处理文本文件（TXT、MD、RTF、CSV、TSV）
+
+    Args:
+        file_path: 文本文件路径
+        file_ext: 文件扩展名
+        language: 语言代码
+
+    Returns:
+        包含处理结果的字典
+    """
+    start_time = datetime.now()
+    logger.info(f"开始处理文本文件: {file_path}, 类型: {file_ext}")
+
+    try:
+        # 尝试不同编码读取文件
+        encodings = ['utf-8', 'gbk', 'gb2312', 'utf-16', 'latin-1']
+        content = None
+        used_encoding = None
+
+        for encoding in encodings:
+            try:
+                with open(file_path, 'r', encoding=encoding) as f:
+                    content = f.read()
+                used_encoding = encoding
+                logger.info(f"成功使用 {encoding} 编码读取文件")
+                break
+            except UnicodeDecodeError:
+                continue
+
+        if content is None:
+            return {"error": "无法读取文件，尝试了多种编码格式"}
+
+        # 根据文件类型处理内容
+        if file_ext in ['.csv', '.tsv']:
+            # CSV/TSV文件特殊处理
+            lines = content.strip().split('\n')
+            delimiter = '\t' if file_ext == '.tsv' else ','
+
+            processed_content = f"=== {file_ext.upper()} 数据 ===\n"
+            tables_data = []
+
+            if lines:
+                # 解析CSV/TSV数据
+                table_rows = []
+                for line in lines:
+                    if line.strip():
+                        fields = line.split(delimiter)
+                        table_rows.append([field.strip() for field in fields])
+
+                if table_rows:
+                    tables_data.append({
+                        "table_id": "csv_table_1",
+                        "rows": table_rows,
+                        "raw_text": content
+                    })
+
+                    # 格式化显示
+                    for i, row in enumerate(table_rows[:50]):  # 限制显示50行
+                        if i == 0:
+                            processed_content += f"列标题: {' | '.join(row)}\n"
+                        else:
+                            processed_content += f"第{i}行: {' | '.join(row)}\n"
+
+            full_text = processed_content
+        else:
+            # 普通文本文件
+            full_text = content
+            tables_data = []
+
+        # 创建页面内容
+        pages = [{
+            "page_number": 1,
+            "text": full_text,
+            "tables": [],
+            "images": []
+        }]
+
+        # 处理信息
+        end_time = datetime.now()
+        processing_time = (end_time - start_time).total_seconds()
+
+        processing_info = {
+            "pypdf2_used": False,
+            "docling_used": False,
+            "gemini_used": False,
+            "force_ocr_used": False,
+            "processing_time_seconds": processing_time,
+            "status": "success",
+            "error_message": None
+        }
+
+        # 文档元数据
+        document_metadata = {
+            "original_filename": os.path.basename(file_path),
+            "processed_at": datetime.now().isoformat(),
+            "page_count": 1,
+            "source_format": f"text{file_ext}",
+            "language": language,
+            "encoding": used_encoding
+        }
+
+        result = {
+            "document_metadata": document_metadata,
+            "processing_info": processing_info,
+            "pages": pages,
+            "full_text": full_text,
+            "tables": tables_data,
+            "images": []
+        }
+
+        logger.info(f"文本文件处理完成: {file_path}, 提取文本长度: {len(full_text)}")
+        return result
+
+    except Exception as e:
+        logger.exception(f"处理文本文件时发生错误: {file_path}")
+        return {"error": f"处理文本文件失败: {str(e)}"}
+
+def process_excel(file_path: str, language: str = "auto", gemini_model: str = "gemini-1.5-flash") -> Dict[str, Any]:
+    """
+    处理Excel文件，提取文本内容和表格数据
+
+    Args:
+        file_path: Excel文件路径
+        language: 文档语言
+        gemini_model: Gemini模型选择
+
+    Returns:
+        包含处理结果的字典
+    """
+    start_time = datetime.now()
+
+    if not EXCEL_PROCESSING_AVAILABLE:
+        return {"error": "Excel processing libraries not available"}
+
+    try:
+        logger.info(f"Processing Excel file: {file_path}")
+
+        # 检测文件扩展名
+        file_ext = os.path.splitext(file_path)[1].lower()
+        if file_ext not in ['.xlsx', '.xls', '.xlsm']:
+            return {"error": f"Unsupported Excel file format: {file_ext}"}
+
+        # 读取Excel文件
+        try:
+            if file_ext == '.xls':
+                # 对于旧版Excel文件，使用xlrd引擎
+                df_dict = pd.read_excel(file_path, sheet_name=None, engine='xlrd')
+            else:
+                # 对于新版Excel文件，使用openpyxl引擎
+                df_dict = pd.read_excel(file_path, sheet_name=None, engine='openpyxl')
+        except Exception as e:
+            logger.error(f"Failed to read Excel file: {e}")
+            return {"error": f"Failed to read Excel file: {str(e)}"}
+
+        # 处理结果
+        result = {
+            "document_metadata": {
+                "original_filename": os.path.basename(file_path),
+                "processed_at": datetime.now().isoformat(),
+                "source_format": "Excel",
+                "sheet_count": len(df_dict)
+            },
+            "processing_info": {
+                "pypdf2_used": False,
+                "docling_used": False,
+                "gemini_used": False,
+                "force_ocr_used": False,
+                "status": "success"
+            },
+            "pages": [],
+            "full_text": "",
+            "tables": [],
+            "images": []
+        }
+
+        all_text_parts = []
+        sheet_number = 1
+
+        # 处理每个工作表
+        for sheet_name, df in df_dict.items():
+            logger.info(f"Processing sheet: {sheet_name}")
+
+            # 构建工作表文本
+            sheet_text_parts = [f"=== 工作表: {sheet_name} ==="]
+
+            # 检查是否有数据
+            if df.empty:
+                sheet_text_parts.append("(空工作表)")
+            else:
+                # 添加列标题
+                if not df.columns.empty:
+                    headers = [str(col) for col in df.columns]
+                    sheet_text_parts.append("列标题: " + " | ".join(headers))
+
+                # 添加数据行（限制行数以避免过长）
+                max_rows = 100  # 限制最多处理100行
+                for idx, row in df.head(max_rows).iterrows():
+                    row_values = []
+                    for val in row:
+                        if pd.isna(val):
+                            row_values.append("")
+                        else:
+                            row_values.append(str(val))
+                    sheet_text_parts.append(" | ".join(row_values))
+
+                # 如果行数超过限制，添加提示
+                if len(df) > max_rows:
+                    sheet_text_parts.append(f"... (还有 {len(df) - max_rows} 行数据)")
+
+            sheet_text = "\n".join(sheet_text_parts)
+            all_text_parts.append(sheet_text)
+
+            # 创建页面内容（每个工作表作为一页）
+            page_content = {
+                "page_number": sheet_number,
+                "text": sheet_text,
+                "tables": [],
+                "images": []
+            }
+
+            # 如果工作表有数据，创建表格信息
+            if not df.empty:
+                table_info = {
+                    "table_id": f"sheet_{sheet_number}_{sheet_name}",
+                    "page_number": sheet_number,
+                    "title": f"工作表: {sheet_name}",
+                    "headers": [str(col) for col in df.columns] if not df.columns.empty else [],
+                    "rows": [],
+                    "raw_text": sheet_text
+                }
+
+                # 添加数据行（限制行数）
+                for idx, row in df.head(50).iterrows():  # 表格数据限制50行
+                    row_values = []
+                    for val in row:
+                        if pd.isna(val):
+                            row_values.append("")
+                        else:
+                            row_values.append(str(val))
+                    table_info["rows"].append(row_values)
+
+                page_content["tables"].append(table_info)
+                result["tables"].append(table_info)
+
+            result["pages"].append(page_content)
+            sheet_number += 1
+
+        # 合并所有文本
+        result["full_text"] = "\n\n".join(all_text_parts)
+
+        # 计算处理时间
+        end_time = datetime.now()
+        processing_time = (end_time - start_time).total_seconds()
+        result["processing_info"]["processing_time_seconds"] = processing_time
+
+        logger.info(f"Excel processing completed in {processing_time:.2f} seconds")
+        logger.info(f"Extracted text length: {len(result['full_text'])} characters")
+
+        return result
+
+    except Exception as e:
+        logger.exception(f"Error processing Excel file: {e}")
+        return {"error": f"Error processing Excel file: {str(e)}"}
+
 def process_pdf(file_path: str, use_pypdf2: bool = True, use_docling: bool = True,
                 use_gemini: bool = True, force_ocr: bool = False,
                 gemini_prompt: Optional[str] = None, language: str = "auto",
@@ -1275,6 +1742,65 @@ def process_pdf(file_path: str, use_pypdf2: bool = True, use_docling: bool = Tru
                 result["full_text"] = pypdf2_result["full_text"]
         else:
             logger.warning(f"PyPDF2 processing failed: {pypdf2_result['error']}")
+
+    # 提取PDF中的图像（使用PyMuPDF）- 独立于其他处理选项
+    logger.info(f"Extracting images from PDF: {file_path}")
+    try:
+        extracted_images = extract_images_from_pdf(file_path)
+        if extracted_images:
+            result["images"].extend(extracted_images)
+            logger.info(f"Successfully extracted {len(extracted_images)} images from PDF")
+
+            # 将图像信息添加到对应的页面中，并在文本中插入图像标记
+            for image_info in extracted_images:
+                page_number = image_info.page_number
+                # 查找对应的页面并添加图像信息
+                for page in result["pages"]:
+                    if page["page_number"] == page_number:
+                        page["images"].append({
+                            "image_id": image_info.image_id,
+                            "page_number": image_info.page_number,
+                            "description": image_info.description,
+                            "mime_type": image_info.mime_type,
+                            "data": image_info.data
+                        })
+
+                        # 在页面文本中插入图像标记
+                        image_marker = f"\n[IMAGE:{image_info.image_id}:{image_info.description}]\n"
+                        if page["text"]:
+                            # 如果页面有文本，在文本开头插入图像标记
+                            page["text"] = image_marker + page["text"]
+                        else:
+                            # 如果页面没有文本，只插入图像标记
+                            page["text"] = image_marker
+                        break
+                # 如果没有找到对应页面，创建一个新页面（防止页面信息缺失）
+                if not any(page["page_number"] == page_number for page in result["pages"]):
+                    image_marker = f"\n[IMAGE:{image_info.image_id}:{image_info.description}]\n"
+                    result["pages"].append({
+                        "page_number": page_number,
+                        "text": image_marker,
+                        "tables": [],
+                        "images": [{
+                            "image_id": image_info.image_id,
+                            "page_number": image_info.page_number,
+                            "description": image_info.description,
+                            "mime_type": image_info.mime_type,
+                            "data": image_info.data
+                        }]
+                    })
+
+            # 重新构建全文，包含图像标记
+            updated_full_text = ""
+            for page in sorted(result["pages"], key=lambda x: x["page_number"]):
+                if page["text"]:
+                    updated_full_text += page["text"] + "\n"
+            result["full_text"] = updated_full_text.strip()
+
+        else:
+            logger.info("No images found in PDF")
+    except Exception as e:
+        logger.error(f"Failed to extract images from PDF: {e}")
 
     # 使用Docling处理
     docling_result = None
@@ -1501,12 +2027,12 @@ def process_pdf(file_path: str, use_pypdf2: bool = True, use_docling: bool = Tru
     return result
 
 
-async def process_with_gemini_vision_ocr(pdf_path: str, language: str, model_name: str) -> Dict[str, Any]:
+async def process_with_gemini_vision_ocr(file_path: str, language: str, model_name: str) -> Dict[str, Any]:
     """
-    使用Gemini Vision OCR处理PDF文件（逐页发送图片）。
+    使用Gemini Vision OCR处理各种文件类型（PDF、图片、文档等）。
 
     Args:
-        pdf_path: PDF文件路径。
+        file_path: 文件路径（支持PDF、图片、文档等）。
         language: 提取语言 (传递给Gemini的prompt，可以是 'auto')。
         model_name: 使用的Gemini模型名称。
 
@@ -1516,32 +2042,90 @@ async def process_with_gemini_vision_ocr(pdf_path: str, language: str, model_nam
     if not GEMINI_ENABLED:
         return {"error": "Gemini AI not enabled or API key not configured."}
 
+    # 检查文件类型，智能处理不同格式
+    file_ext = os.path.splitext(file_path)[1].lower()
+    logger.info(f"Gemini Vision OCR processing file: {file_path}, extension: {file_ext}")
+
     all_text: List[str] = []
-    doc = None
+    images_to_process = []
+
     try:
-        with open(pdf_path, "rb") as f:
-            pdf_content_bytes = f.read()
-        
-        doc = fitz.open(stream=pdf_content_bytes, filetype="pdf")
+        # 根据文件类型准备图像数据
+        if file_ext == '.pdf':
+            # PDF文件：使用PyMuPDF转换为图像
+            with open(file_path, "rb") as f:
+                pdf_content_bytes = f.read()
+
+            doc = fitz.open(stream=pdf_content_bytes, filetype="pdf")
+            for page_num in range(len(doc)):
+                page = doc.load_page(page_num)
+                pix = page.get_pixmap(dpi=300)
+                img_bytes = pix.tobytes("png")
+                img_pil = Image.open(io.BytesIO(img_bytes))
+                images_to_process.append({
+                    "image": img_pil,
+                    "page_number": page_num + 1,
+                    "source": f"PDF page {page_num + 1}"
+                })
+            doc.close()
+
+        elif file_ext in ['.jpg', '.jpeg', '.png', '.tiff', '.tif', '.bmp']:
+            # 图片文件：直接处理
+            img_pil = Image.open(file_path)
+            images_to_process.append({
+                "image": img_pil,
+                "page_number": 1,
+                "source": "Image file"
+            })
+
+        elif file_ext in ['.txt', '.md', '.rtf', '.csv', '.tsv']:
+            # 文本文件：读取内容并创建文本图像（可选）或直接返回文本
+            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                text_content = f.read()
+
+            # 对于文本文件，我们可以直接返回内容，不需要OCR
+            logger.info(f"Text file detected, returning content directly (length: {len(text_content)})")
+            return {
+                "extracted_text": text_content,
+                "page_count": 1,
+                "warning": "Text file processed directly without OCR"
+            }
+
+        elif file_ext in ['.docx', '.doc', '.xlsx', '.xls', '.xlsm']:
+            # Office文档：提示用户这些文件应该用专门的处理器
+            return {
+                "error": f"Office documents ({file_ext}) should be processed with dedicated handlers, not Vision OCR"
+            }
+
+        else:
+            # 未知文件类型：尝试作为图像处理
+            try:
+                img_pil = Image.open(file_path)
+                images_to_process.append({
+                    "image": img_pil,
+                    "page_number": 1,
+                    "source": f"Unknown file type {file_ext} treated as image"
+                })
+                logger.info(f"Unknown file type {file_ext} successfully opened as image")
+            except Exception as e:
+                return {"error": f"Unsupported file type {file_ext} and cannot open as image: {str(e)}"}
+
+        # 处理准备好的图像
+        if not images_to_process:
+            return {"error": "No images to process"}
+
         model = genai.GenerativeModel(model_name)
-        
-        # language_descriptor 的定义被移除了，因为新的提示词直接使用了 language 变量
-        # language_descriptor = f"'{language}'" if language and language.lower() != "auto" else "to be auto-detected by you"
-        
+
         # 基于用户当前的极简提示词进行修改
-        # 用户当前代码中的提示词是: f"""Extract all text from this image. Document language is {language if language != 'auto' else 'any language'}.""" 
-        # 在此基础上增加 "Output in the original format."
         final_minimal_prompt = f"""Extract all text from this image. Document language is {language if language != 'auto' else 'any language'}. Output in the original format."""
 
-        for page_num in range(len(doc)):
-            page = doc.load_page(page_num)
-            # 用户代码中DPI为300
-            pix = page.get_pixmap(dpi=300) 
-            img_bytes = pix.tobytes("png")
-            img_pil = Image.open(io.BytesIO(img_bytes))
+        for img_data in images_to_process:
+            img_pil = img_data["image"]
+            page_number = img_data["page_number"]
+            source = img_data["source"]
 
-            logger.info(f"向Gemini发送第 {page_num + 1}/{len(doc)} 页进行OCR处理 (DPI: 300)...")
-            
+            logger.info(f"向Gemini发送{source}进行OCR处理...")
+
             prompt_parts_for_api = [final_minimal_prompt] # 使用最终的极简提示词
             
             current_page_text_parts = []
@@ -1570,15 +2154,15 @@ async def process_with_gemini_vision_ocr(pdf_path: str, language: str, model_nam
                         if current_page_text_parts:
                             page_text_content = "".join(current_page_text_parts)
                             all_text.append(page_text_content)
-                            logger.info(f"成功处理第 {page_num + 1} 页，提取文本长度: {len(page_text_content)}")
+                            logger.info(f"成功处理{source}，提取文本长度: {len(page_text_content)}")
                         else:
-                            logger.warning(f"第 {page_num + 1} 页 Gemini 响应状态为 STOP，但未找到文本内容。 Parts: {[p.to_dict() for p in candidate.content.parts] if candidate.content else 'N/A'}")
+                            logger.warning(f"{source} Gemini 响应状态为 STOP，但未找到文本内容。 Parts: {[p.to_dict() for p in candidate.content.parts] if candidate.content else 'N/A'}")
                     else:
-                        logger.warning(f"第 {page_num + 1} 页 Gemini 响应状态为 STOP，但 Candidate.content 或 Candidate.content.parts 为空。")
+                        logger.warning(f"{source} Gemini 响应状态为 STOP，但 Candidate.content 或 Candidate.content.parts 为空。")
                 
                 elif candidate.finish_reason.value == 2: # MAX_TOKENS
                     logger.warning(
-                        f"第 {page_num + 1} 页 Gemini 处理因 MAX_TOKENS (输出Token达到上限) 而结束。将尝试提取部分文本。"
+                        f"{source} Gemini 处理因 MAX_TOKENS (输出Token达到上限) 而结束。将尝试提取部分文本。"
                         f"Finish Reason: {candidate.finish_reason.name} (Value: {candidate.finish_reason.value}). "
                         f"Safety Ratings: {[str(rating) for rating in candidate.safety_ratings] if candidate.safety_ratings else 'N/A'}"
                     )
@@ -1589,27 +2173,28 @@ async def process_with_gemini_vision_ocr(pdf_path: str, language: str, model_nam
                         if current_page_text_parts:
                             partial_text = "".join(current_page_text_parts)
                             all_text.append(partial_text) # 添加部分文本
-                            logger.info(f"从第 {page_num + 1} 页提取到部分文本 (MAX_TOKENS)，长度: {len(partial_text)}")
+                            logger.info(f"从{source}提取到部分文本 (MAX_TOKENS)，长度: {len(partial_text)}")
                         else:
-                            logger.warning(f"第 {page_num + 1} 页因 MAX_TOKENS 结束，但未在响应的 parts 中找到部分文本。")
-                
+                            logger.warning(f"{source}因 MAX_TOKENS 结束，但未在响应的 parts 中找到部分文本。")
+
                 else: # 其他非正常结束原因 (SAFETY, RECITATION, OTHER, UNSPECIFIED)
                     logger.warning(
-                        f"第 {page_num + 1} 页 Gemini 处理未正常完成。将跳过此页的文本提取。"
+                        f"{source} Gemini 处理未正常完成。将跳过此页的文本提取。"
                         f"Finish Reason: {candidate.finish_reason.name} (Value: {candidate.finish_reason.value}). "
                         f"Safety Ratings: {[str(rating) for rating in candidate.safety_ratings] if candidate.safety_ratings else 'N/A'}"
                     )
 
             except AttributeError as ae:
-                logger.error(f"处理第 {page_num + 1} 页的Gemini响应时发生 AttributeError (API响应结构可能不符合预期): {ae}", exc_info=True)
+                logger.error(f"处理{source}的Gemini响应时发生 AttributeError (API响应结构可能不符合预期): {ae}", exc_info=True)
                 if 'response' in locals() and response:
-                     logger.error(f"原始 Gemini 响应 (第 {page_num + 1} 页): {response}")
+                     logger.error(f"原始 Gemini 响应 ({source}): {response}")
             except Exception as e_page:
-                logger.error(f"处理第 {page_num + 1} 页时发生错误: {e_page}", exc_info=True)
+                logger.error(f"处理{source}时发生错误: {e_page}", exc_info=True)
         
         final_extracted_text = "\n\n".join(all_text) # 使用两个换行符分隔页面文本
-        logger.info(f"Gemini Vision OCR 完成，总提取文本长度: {len(final_extracted_text)}, 总页数: {len(doc)}")
-        return {"extracted_text": final_extracted_text, "page_count": len(doc), "warning": "使用Gemini Vision OCR提取的文本"}
+        total_images = len(images_to_process)
+        logger.info(f"Gemini Vision OCR 完成，总提取文本长度: {len(final_extracted_text)}, 总处理图像数: {total_images}")
+        return {"extracted_text": final_extracted_text, "page_count": total_images, "warning": "使用Gemini Vision OCR提取的文本"}
 
     except RuntimeError as e_pymupdf: # Catch RuntimeError which PyMuPDF often uses for internal errors
         logger.error(f"PyMuPDF runtime error during Vision OCR: {e_pymupdf}", exc_info=True)
@@ -1620,11 +2205,11 @@ async def process_with_gemini_vision_ocr(pdf_path: str, language: str, model_nam
             return {"error": f"PyMuPDF try later error: {e_pymupdf}"}
         return {"error": f"PyMuPDF runtime error: {e_pymupdf}"} # Default return for other RuntimeErrors from PyMuPDF
     except Exception as e:
-        logger.error(f"使用Gemini Vision OCR处理PDF '{pdf_path}' 时发生未知错误: {e}", exc_info=True)
+        logger.error(f"使用Gemini Vision OCR处理文件 '{file_path}' 时发生未知错误: {e}", exc_info=True)
         return {"error": f"An unexpected error occurred during Gemini Vision OCR processing: {e}"}
     finally:
-        if doc:
-            doc.close()
+        # 清理资源（如果有的话）
+        pass
 
 
 # --- API Endpoints ---
@@ -1685,8 +2270,136 @@ async def ocr_upload(
         with open(temp_file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         logger.info(f"File '{file.filename}' uploaded to '{temp_file_path}'")
-        logger.info(f"Processing PDF file: {temp_file_path}")
 
+        # 检测文件类型
+        file_ext = os.path.splitext(file.filename)[1].lower()
+        logger.info(f"Processing file: {temp_file_path}, file extension: {file_ext}")
+
+        # 检查是否为Excel文件
+        if file_ext in ['.xlsx', '.xls', '.xlsm']:
+            logger.info("Detected Excel file, processing with Excel handler")
+            if not EXCEL_PROCESSING_AVAILABLE:
+                raise HTTPException(status_code=400, detail="Excel processing libraries not available")
+
+            # 处理Excel文件
+            excel_result = process_excel(temp_file_path, language, gemini_model)
+
+            if "error" in excel_result:
+                logger.error(f"Excel processing failed: {excel_result['error']}")
+                raise HTTPException(status_code=500, detail=f"Excel processing failed: {excel_result['error']}")
+
+            # 转换为OcrResponse格式
+            processing_info = ProcessingInfo(**excel_result["processing_info"])
+            document_metadata = DocumentMetadata(**excel_result["document_metadata"])
+
+            pages = []
+            for page_data in excel_result.get("pages", []):
+                page = PageContent(
+                    page_number=page_data["page_number"],
+                    text=page_data.get("text", ""),
+                    tables=page_data.get("tables", []),
+                    images=page_data.get("images", [])
+                )
+                pages.append(page)
+
+            tables = []
+            for table_data in excel_result.get("tables", []):
+                try:
+                    tables.append(TableInfo(**table_data))
+                except Exception as e_table:
+                    logger.warning(f"Skipping table due to parsing error: {e_table}")
+
+            return OcrResponse(
+                document_metadata=document_metadata,
+                processing_info=processing_info,
+                pages=pages,
+                full_text=excel_result.get("full_text", ""),
+                tables=tables,
+                images=excel_result.get("images", []),
+                gemini_analysis=None
+            )
+
+        # 检查是否为Word文档
+        elif file_ext in ['.docx', '.doc']:
+            logger.info("Detected Word document, processing with Word handler")
+            if not WORD_PROCESSING_AVAILABLE:
+                raise HTTPException(status_code=400, detail="Word processing libraries not available")
+
+            # 处理Word文档
+            word_result = process_word(temp_file_path, language, gemini_model)
+
+            if "error" in word_result:
+                logger.error(f"Word processing failed: {word_result['error']}")
+                raise HTTPException(status_code=500, detail=f"Word processing failed: {word_result['error']}")
+
+            # 转换为OcrResponse格式
+            processing_info = ProcessingInfo(**word_result["processing_info"])
+            document_metadata = DocumentMetadata(**word_result["document_metadata"])
+
+            pages = []
+            for page_data in word_result.get("pages", []):
+                page = PageContent(
+                    page_number=page_data["page_number"],
+                    text=page_data.get("text", ""),
+                    tables=page_data.get("tables", []),
+                    images=page_data.get("images", [])
+                )
+                pages.append(page)
+
+            tables = []
+            for table_data in word_result.get("tables", []):
+                try:
+                    tables.append(TableInfo(**table_data))
+                except Exception as e_table:
+                    logger.warning(f"Skipping table due to parsing error: {e_table}")
+
+            return OcrResponse(
+                document_metadata=document_metadata,
+                processing_info=processing_info,
+                pages=pages,
+                full_text=word_result.get("full_text", ""),
+                tables=tables,
+                images=word_result.get("images", []),
+                gemini_analysis=None
+            )
+
+        # 检查是否为文本文件
+        elif file_ext in ['.txt', '.md', '.rtf', '.csv', '.tsv']:
+            logger.info(f"Detected text file ({file_ext}), processing with text handler")
+
+            # 处理文本文件
+            text_result = process_text_file(temp_file_path, file_ext, language)
+
+            if "error" in text_result:
+                logger.error(f"Text file processing failed: {text_result['error']}")
+                raise HTTPException(status_code=500, detail=f"Text file processing failed: {text_result['error']}")
+
+            # 转换为OcrResponse格式
+            processing_info = ProcessingInfo(**text_result["processing_info"])
+            document_metadata = DocumentMetadata(**text_result["document_metadata"])
+
+            pages = []
+            for page_data in text_result.get("pages", []):
+                page = PageContent(
+                    page_number=page_data["page_number"],
+                    text=page_data.get("text", ""),
+                    tables=page_data.get("tables", []),
+                    images=page_data.get("images", [])
+                )
+                pages.append(page)
+
+            return OcrResponse(
+                document_metadata=document_metadata,
+                processing_info=processing_info,
+                pages=pages,
+                full_text=text_result.get("full_text", ""),
+                tables=text_result.get("tables", []),
+                images=text_result.get("images", []),
+                gemini_analysis=None
+            )
+
+        # 如果到这里，说明文件不是Excel、Word或文本文件，应该是PDF或图片文件
+        # 对于PDF文件，根据use_vision_ocr_bool决定处理方式
         if use_vision_ocr_bool:
             vision_start_time = datetime.now()
             result_vision = await process_with_gemini_vision_ocr(temp_file_path, language, gemini_model)
@@ -1881,14 +2594,25 @@ async def ocr_status():
     """
     return {
         "status": "running",
-        "version": "1.1.0",  # 更新版本号
+        "version": "1.3.0",  # 更新版本号，支持Excel、Word、文本文件
         "capabilities": {
             "pypdf2_available": PYPDF2_AVAILABLE,
             "docling_available": DOCLING_AVAILABLE,
             "gemini_enabled": GEMINI_ENABLED,
+            "excel_processing_available": EXCEL_PROCESSING_AVAILABLE,
+            "word_processing_available": WORD_PROCESSING_AVAILABLE,
             "default_gemini_model": DEFAULT_GEMINI_MODEL if GEMINI_ENABLED else None,
             "available_gemini_models": AVAILABLE_GEMINI_MODELS if GEMINI_ENABLED else [],
-            "gemini_model_configs": GEMINI_MODELS if GEMINI_ENABLED else {}
+            "gemini_model_configs": GEMINI_MODELS if GEMINI_ENABLED else {},
+            "supported_file_types": {
+                "pdf": PYPDF2_AVAILABLE or DOCLING_AVAILABLE,
+                "images": DOCLING_AVAILABLE,
+                "excel": EXCEL_PROCESSING_AVAILABLE,
+                "word": WORD_PROCESSING_AVAILABLE,
+                "text": True,  # 文本文件总是支持
+                "csv": True,  # CSV文件总是支持
+                "markdown": True  # Markdown文件总是支持
+            }
         },
         "cache_dir": os.path.abspath(LOCAL_CACHE_DIR),
         "upload_dir": os.path.abspath(UPLOAD_DIR)
