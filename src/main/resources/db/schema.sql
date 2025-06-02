@@ -58,3 +58,38 @@ CREATE TABLE IF NOT EXISTS ocr_tasks (
     completed_at DATETIME,                                                   -- 完成时间
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE             -- 外键约束，用户删除时级联删除任务
 );
+
+-- 视频转写任务表
+-- 存储用户的链接处理任务信息（网页摘要和视频转写）
+CREATE TABLE IF NOT EXISTS video_transcription_tasks (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,                                    -- 任务ID，自增主键
+    user_id BIGINT NOT NULL,                                                 -- 用户ID，外键关联users表
+    task_id VARCHAR(36) NOT NULL UNIQUE,                                     -- 唯一任务ID（UUID格式）
+    url VARCHAR(2048) NOT NULL,                                              -- 处理的URL链接
+    content_type VARCHAR(20) NOT NULL,                                       -- 内容类型：WEBPAGE, VIDEO
+    status VARCHAR(20) NOT NULL,                                             -- 任务状态：PENDING, PROCESSING, COMPLETED, FAILED
+
+    -- 视频相关字段
+    video_title VARCHAR(500),                                                -- 视频标题
+    video_description TEXT,                                                  -- 视频描述
+    video_duration INTEGER,                                                  -- 视频时长（秒）
+
+    -- 处理选项
+    language VARCHAR(10) DEFAULT 'auto',                                     -- 语言选择，默认自动检测
+    custom_prompt TEXT,                                                      -- 自定义prompt
+
+    -- 结果字段
+    result_json LONGTEXT,                                                    -- 存储完整的处理结果（JSON格式）
+    transcription_text LONGTEXT,                                            -- 转写文本（仅视频）
+    summary_text TEXT,                                                       -- AI总结文本
+
+    -- 时间字段
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,                  -- 创建时间
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,  -- 更新时间
+    completed_at DATETIME,                                                   -- 完成时间
+
+    -- 错误处理
+    error_message TEXT,                                                      -- 错误信息（如果有）
+
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE             -- 外键约束，用户删除时级联删除任务
+);

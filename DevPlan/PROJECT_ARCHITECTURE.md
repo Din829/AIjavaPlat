@@ -251,6 +251,26 @@ AIplatJava/
 - created_at: datetime
 - completed_at: datetime
 
+### 视频转写任务表 (video_transcription_tasks)
+- id: bigint (PK, 自增)
+- user_id: bigint (FK -> users.id)
+- task_id: varchar(36) (UNIQUE, UUID)
+- url: varchar(2048) (处理的URL链接)
+- content_type: varchar(20) (内容类型：WEBPAGE, VIDEO)
+- status: varchar(20) (任务状态：PENDING, PROCESSING, COMPLETED, FAILED)
+- video_title: varchar(500) (视频标题)
+- video_description: text (视频描述)
+- video_duration: int (视频时长，秒)
+- language: varchar(10) (语言选择，默认auto)
+- custom_prompt: text (自定义prompt)
+- result_json: longtext (完整处理结果，JSON格式)
+- transcription_text: longtext (转写文本，仅视频)
+- summary_text: text (AI总结文本)
+- created_at: datetime
+- updated_at: datetime
+- completed_at: datetime
+- error_message: text (错误信息，如果有)
+
 ## 安全考虑
 
 1. 所有API Token使用强加密算法存储
@@ -377,3 +397,54 @@ AIplatJava/
 - **组件复用性**：RichTextDisplay可用于其他需要富文本显示的场景
 - **扩展性**：标记系统可扩展支持其他媒体类型（视频、音频等）
 - **性能优化**：图像懒加载和错误处理机制
+
+### ✅ 链接转写服务基础架构（2025-01-28）
+
+**架构重大扩展**：实现统一的链接处理服务，支持网页摘要和视频转写 ⭐
+
+**数据库架构扩展**：
+- **新增数据表**：`video_transcription_tasks`表
+  - 支持网页和视频两种内容类型的统一管理
+  - 完整的任务状态跟踪：PENDING → PROCESSING → COMPLETED/FAILED
+  - 视频特有字段：标题、描述、时长（用于Whisper转写精度增强）
+  - 处理选项：语言选择、自定义prompt支持
+  - 结果存储：转写文本、AI总结、完整JSON结果
+
+**后端架构扩展**：
+- **实体层新增**：
+  - `VideoTranscriptionTask.java`：链接处理任务实体类
+  - 包含内容类型和状态常量定义，遵循项目编码规范
+- **DTO层新增**：
+  - `LinkProcessRequestDto.java`：链接处理请求DTO（含验证注解）
+  - `LinkProcessResponseDto.java`：统一响应DTO（支持多种构造方式）
+- **数据访问层新增**：
+  - `VideoTranscriptionTaskMapper.java`：完整的数据访问接口
+  - `VideoTranscriptionTaskMapper.xml`：详细的SQL映射文件
+- **服务层新增**：
+  - `LinkProcessingService.java`：主要业务逻辑接口
+  - `LinkAnalysisService.java`：链接分析服务接口
+  - `LinkProcessingServiceImpl.java`：异步处理实现
+  - `LinkAnalysisServiceImpl.java`：智能链接类型识别
+- **控制器层新增**：
+  - `LinkProcessingController.java`：完整的REST API端点
+
+**技术架构特点**：
+- **异步处理机制**：复用OCR服务的成熟异步架构模式
+- **智能链接识别**：支持YouTube、Bilibili等主流视频平台自动识别
+- **安全性设计**：所有操作包含用户ID验证，确保数据隔离
+- **扩展性架构**：为后续微服务集成预留接口和实现空间
+
+**API端点设计**：
+```
+POST /api/link-processing/process     # 提交链接处理任务
+GET  /api/link-processing/status/{id} # 获取任务状态
+GET  /api/link-processing/result/{id} # 获取任务结果
+GET  /api/link-processing/tasks       # 获取用户任务列表
+DELETE /api/link-processing/tasks/{id} # 删除任务
+```
+
+**架构准备状态**：
+- ✅ **Phase 1完成**：基础架构和数据模型
+- 🔄 **Phase 2计划**：视频处理微服务集成
+- 🔄 **Phase 3计划**：Whisper转写服务集成
+- 🔄 **Phase 4计划**：前端界面开发

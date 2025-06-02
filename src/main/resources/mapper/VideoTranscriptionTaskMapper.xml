@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ding.aiplatjava.mapper.VideoTranscriptionTaskMapper">
+
+    <!-- 定义明确的 ResultMap -->
+    <resultMap id="VideoTranscriptionTaskResultMap" type="com.ding.aiplatjava.entity.VideoTranscriptionTask">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="taskId" column="task_id"/>
+        <result property="url" column="url"/>
+        <result property="contentType" column="content_type"/>
+        <result property="status" column="status"/>
+        <result property="videoTitle" column="video_title"/>
+        <result property="videoDescription" column="video_description"/>
+        <result property="videoDuration" column="video_duration"/>
+        <result property="language" column="language"/>
+        <result property="customPrompt" column="custom_prompt"/>
+        <result property="resultJson" column="result_json"/>
+        <result property="transcriptionText" column="transcription_text"/>
+        <result property="summaryText" column="summary_text"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+        <result property="completedAt" column="completed_at"/>
+        <result property="errorMessage" column="error_message"/>
+    </resultMap>
+
+    <!-- 插入新的视频转写任务 -->
+    <insert id="insert" parameterType="com.ding.aiplatjava.entity.VideoTranscriptionTask" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO video_transcription_tasks (
+            user_id, task_id, url, content_type, status, 
+            video_title, video_description, video_duration, 
+            language, custom_prompt, result_json, 
+            transcription_text, summary_text, 
+            created_at, updated_at, completed_at, error_message
+        ) VALUES (
+            #{userId}, #{taskId}, #{url}, #{contentType}, #{status}, 
+            #{videoTitle}, #{videoDescription}, #{videoDuration}, 
+            #{language}, #{customPrompt}, #{resultJson}, 
+            #{transcriptionText}, #{summaryText}, 
+            #{createdAt}, #{updatedAt}, #{completedAt}, #{errorMessage}
+        )
+    </insert>
+
+    <!-- 根据ID查询视频转写任务 -->
+    <select id="selectById" resultMap="VideoTranscriptionTaskResultMap">
+        SELECT * FROM video_transcription_tasks WHERE id = #{id}
+    </select>
+
+    <!-- 根据任务ID（UUID）查询视频转写任务 -->
+    <select id="selectByTaskId" resultMap="VideoTranscriptionTaskResultMap">
+        SELECT * FROM video_transcription_tasks WHERE task_id = #{taskId}
+    </select>
+
+    <!-- 根据用户ID查询该用户的所有视频转写任务 -->
+    <select id="selectByUserId" resultMap="VideoTranscriptionTaskResultMap">
+        SELECT * FROM video_transcription_tasks 
+        WHERE user_id = #{userId} 
+        ORDER BY created_at DESC
+    </select>
+
+    <!-- 根据用户ID和任务ID查询视频转写任务 -->
+    <select id="selectByTaskIdAndUserId" resultMap="VideoTranscriptionTaskResultMap">
+        SELECT * FROM video_transcription_tasks 
+        WHERE task_id = #{taskId} AND user_id = #{userId}
+    </select>
+
+    <!-- 更新任务状态 -->
+    <update id="updateStatus">
+        UPDATE video_transcription_tasks 
+        SET status = #{status}, updated_at = NOW() 
+        WHERE task_id = #{taskId}
+    </update>
+
+    <!-- 更新视频元数据信息 -->
+    <update id="updateVideoMetadata">
+        UPDATE video_transcription_tasks 
+        SET video_title = #{videoTitle}, 
+            video_description = #{videoDescription}, 
+            video_duration = #{videoDuration}, 
+            updated_at = NOW() 
+        WHERE task_id = #{taskId}
+    </update>
+
+    <!-- 更新任务结果 -->
+    <update id="updateResult">
+        UPDATE video_transcription_tasks 
+        SET result_json = #{resultJson}, 
+            transcription_text = #{transcriptionText}, 
+            summary_text = #{summaryText}, 
+            status = 'COMPLETED', 
+            updated_at = NOW(), 
+            completed_at = #{completedAt} 
+        WHERE task_id = #{taskId}
+    </update>
+
+    <!-- 更新任务错误信息 -->
+    <update id="updateError">
+        UPDATE video_transcription_tasks 
+        SET error_message = #{errorMessage}, 
+            status = 'FAILED', 
+            updated_at = NOW(), 
+            completed_at = NOW() 
+        WHERE task_id = #{taskId}
+    </update>
+
+    <!-- 根据状态查询任务列表 -->
+    <select id="selectByStatus" resultMap="VideoTranscriptionTaskResultMap">
+        SELECT * FROM video_transcription_tasks 
+        WHERE status = #{status} 
+        ORDER BY created_at ASC
+    </select>
+
+    <!-- 删除指定用户的任务 -->
+    <delete id="deleteByTaskIdAndUserId">
+        DELETE FROM video_transcription_tasks 
+        WHERE task_id = #{taskId} AND user_id = #{userId}
+    </delete>
+
+</mapper>
