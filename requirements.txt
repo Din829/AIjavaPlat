@@ -1,28 +1,23 @@
-# OCR微服务依赖包
-fastapi>=0.104.0
-uvicorn>=0.24.0
-python-multipart>=0.0.6
-pydantic>=2.5.0
+# Web 框架和服务器
+fastapi==0.115.12
+uvicorn[standard]==0.34.2
+python-multipart==0.0.20
+pydantic==2.11.3
 
-# PDF处理
-PyPDF2>=3.0.1
-PyMuPDF>=1.23.0
+# PDF 处理
+PyPDF2==3.0.1
+PyMuPDF==1.26.0
 
-# OCR和文档处理
-docling>=2.32.0
-easyocr>=1.7.0
-Pillow>=10.0.0
+# 图像处理
+Pillow==10.4.0
 
-# Excel文件处理
-pandas>=2.1.0
-openpyxl>=3.1.0
-xlrd>=2.0.1
+# AI 服务
+google-generativeai==0.8.5
 
-# Word文档处理（为未来扩展准备）
-python-docx>=1.1.0
+# 办公文档处理
+pandas==2.2.3
+openpyxl==3.1.5
+python-docx==1.1.2
 
-# Google Gemini API
-google-generativeai>=0.3.0
-
-# 其他工具库
-requests>=2.31.0
+# 系统依赖支持
+requests==2.32.3

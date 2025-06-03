@@ -18,5 +18,66 @@ services:
       - mysql_aisp_data:/var/lib/mysql
     command: [--character-set-server=utf8mb4, --collation-server=utf8mb4_unicode_ci] # 设置数据库服务器默认字符集和排序规则
 
+  ocr-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-platform-ocr
+    ports:
+      - "8012:8012"
+    environment:
+      # Gemini API 配置
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-AIzaSyDFLyEYqgaC6plSFF5IjvQEW0FEug6o14o}
+      
+      # 服务配置
+      - PYTHONPATH=/app
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+      
+      # Docling 配置
+      - DOCLING_ALLOW_DOWNLOADS=1
+      - HF_HOME=/app/docling_cache
+      - TRANSFORMERS_CACHE=/app/docling_cache/transformers
+      - HF_DATASETS_CACHE=/app/docling_cache/datasets
+      - HUGGINGFACE_HUB_CACHE=/app/docling_cache/hub
+      - DOCLING_CACHE_DIR=/app/docling_cache
+    
+    volumes:
+      # 持久化缓存目录
+      - ocr_cache:/app/docling_cache
+      # 临时文件目录
+      - ocr_temp:/app/temp_uploads
+    
+    networks:
+      - ai-platform-network
+    
+    restart: unless-stopped
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8012/api/ocr/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    
+    # 资源限制
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+
 volumes:
   mysql_aisp_data: # 定义一个具名卷来存储数据
+  ocr_cache:
+    driver: local
+  ocr_temp:
+    driver: local
+
+networks:
+  ai-platform-network:
+    driver: bridge
+    external: true

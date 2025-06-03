@@ -782,7 +782,7 @@ const startBatchProcessing = async () => {
       id: `${batchId.value}_${file.name}`,
       fileName: file.name,
       fileSize: file.size,
-      status: 'pending',
+      status: 'PENDING',
       progress: 0,
       result: null,
       error: null
@@ -795,7 +795,7 @@ const startBatchProcessing = async () => {
       console.log(`开始处理文件: ${file.name}`);
 
       // 更新状态为处理中
-      batchTasks.value[index].status = 'processing';
+      batchTasks.value[index].status = 'PROCESSING';
 
       const response = await ocrStore.uploadFile(file, {
         usePypdf2: formValue.value.usePypdf2,
@@ -812,7 +812,23 @@ const startBatchProcessing = async () => {
         batchTasks.value[index].taskId = response.taskId;
         batchTasks.value[index].status = response.status;
         batchTasks.value[index].createdAt = response.createdAt;
-        console.log(`文件 ${file.name} 上传成功，任务ID: ${response.taskId}`);
+        console.log(`✅ 文件 ${file.name} 上传成功，任务ID: ${response.taskId}, 状态: ${response.status}`);
+        
+        // 立即检查一次状态，防止状态更新延迟
+        setTimeout(async () => {
+          try {
+            console.log(`🔍 立即检查任务状态: ${file.name} (${response.taskId})`);
+            const status = await ocrStore.getTaskStatus(response.taskId);
+            if (status && status.status !== response.status) {
+              console.log(`📊 状态已更新: ${file.name} ${response.status} → ${status.status}`);
+              batchTasks.value[index].status = status.status;
+            }
+          } catch (e) {
+            console.error('立即检查状态失败:', e);
+          }
+        }, 1000); // 1秒后检查一次
+      } else {
+        console.error(`❌ 文件 ${file.name} 上传响应无效:`, response);
       }
     } catch (error) {
       console.error(`文件 ${file.name} 上传失败:`, error);
@@ -912,13 +928,22 @@ const startBatchPolling = () => {
       return;
     }
 
+    console.log('🔄 批量轮询检查 - 当前任务数:', batchTasks.value.length);
+
     // 检查未完成的任务
     const pendingTasks = batchTasks.value.filter(task =>
       task.taskId && (task.status === 'PENDING' || task.status === 'PROCESSING')
     );
 
+    console.log('📋 未完成任务数:', pendingTasks.length, '任务列表:', pendingTasks.map(t => ({
+      fileName: t.fileName,
+      taskId: t.taskId,
+      status: t.status
+    })));
+
     if (pendingTasks.length === 0) {
       // 所有任务都已完成，停止轮询
+      console.log('✅ 所有批量任务已完成，停止轮询');
       stopBatchPolling();
       return;
     }
@@ -926,18 +951,26 @@ const startBatchPolling = () => {
     // 更新任务状态
     for (const task of pendingTasks) {
       try {
+        console.log(`🔍 检查任务状态: ${task.fileName} (${task.taskId})`);
         const status = await ocrStore.getTaskStatus(task.taskId);
+        console.log(`📊 获取到状态:`, status);
+        
         if (status) {
           const taskIndex = batchTasks.value.findIndex(t => t.taskId === task.taskId);
           if (taskIndex !== -1) {
+            const oldStatus = batchTasks.value[taskIndex].status;
+            
             batchTasks.value[taskIndex] = {
               ...batchTasks.value[taskIndex],
               status: status.status
             };
 
+            console.log(`🔄 状态更新: ${task.fileName} ${oldStatus} → ${status.status}`);
+
             // 如果任务完成，自动获取结果
             if (status.status === 'COMPLETED' && !batchTaskResults.value.has(task.taskId)) {
               try {
+                console.log(`🎯 任务完成，获取结果: ${task.fileName}`);
                 const result = await ocrStore.getTaskResult(task.taskId);
                 if (result) {
                   batchTaskResults.value.set(task.taskId, result);
@@ -946,6 +979,7 @@ const startBatchPolling = () => {
                   // 如果这是第一个完成的任务，自动选中它
                   if (!selectedTaskId.value) {
                     selectedTaskId.value = task.taskId;
+                    console.log(`🎨 自动选中任务: ${task.fileName}`);
                   }
                 }
               } catch (error) {
@@ -958,7 +992,7 @@ const startBatchPolling = () => {
         console.error('更新任务状态失败:', error);
       }
     }
-  }, 2000); // 每2秒检查一次
+  }, 1500); // 改为1.5秒检查一次，更频繁
 };
 
 const stopBatchPolling = () => {
