@@ -57,8 +57,9 @@ public class LinkProcessResponseDto {
 
     /**
      * 视频时长（秒）（仅当contentType为VIDEO时有值）
+     * 支持小数点精度，如147.4秒
      */
-    private Integer videoDuration;
+    private Double videoDuration;
 
     /**
      * 转写文本（仅当contentType为VIDEO且状态为COMPLETED时有值）

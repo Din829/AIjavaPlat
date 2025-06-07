@@ -5,6 +5,7 @@
  */
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { useAuthStore } from '../stores/authStore'; // 导入 auth store
+import { useLinkProcessingStore } from '../stores/linkProcessingStore'; // 导入链接处理store
 
 // 路由定义
 const routes: Array<RouteRecordRaw> = [
@@ -52,6 +53,12 @@ const routes: Array<RouteRecordRaw> = [
     component: () => import('../views/OcrPage.vue'),
     meta: { requiresAuth: true, title: 'OCR文档处理' }
   },
+  {
+    path: '/link-processing',
+    name: 'LinkProcessing',
+    component: () => import('../views/LinkProcessingPage.vue'),
+    meta: { requiresAuth: true, title: '智能链接处理' }
+  },
 
   // 重定向
   {
@@ -73,6 +80,17 @@ router.beforeEach(async (to, from, next) => {
   // 直接在模块顶层调用 useAuthStore() 可能过早。
   // 将其放在 beforeEach 回调内部，可以确保在需要时才尝试获取。
   const authStore = useAuthStore();
+  
+  // 如果从链接处理页面离开，清理相关状态
+  if (from.name === 'LinkProcessing' && to.name !== 'LinkProcessing') {
+    try {
+      const linkProcessingStore = useLinkProcessingStore();
+      linkProcessingStore.clearCurrentProcessing();
+      console.log('路由切换：已清理链接处理状态');
+    } catch (error) {
+      console.warn('清理链接处理状态时出错:', error);
+    }
+  }
 
   // --- 添加调试日志 ---
   console.log('%c[Router Guard]','color: blue; font-weight: bold;', {

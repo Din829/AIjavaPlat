@@ -17,6 +17,7 @@ import apiClient from './apiClient';
 export enum TokenProvider {
   OPENAI = 'OPENAI',
   AZURE_OPENAI = 'AZURE_OPENAI',
+  GEMINI = 'GEMINI',  // 添加Gemini支持
   // 可以根据需要添加更多提供商
 }
 
@@ -100,6 +101,8 @@ export const getProviderDisplayName = (provider: TokenProvider): string => {
       return 'OpenAI';
     case TokenProvider.AZURE_OPENAI:
       return 'Azure OpenAI';
+    case TokenProvider.GEMINI:
+      return 'Google Gemini';  // 添加Gemini显示名称
     default:
       return provider; // 如果没有特定的显示名称，则返回原始值
   }
@@ -114,6 +117,7 @@ export const getProviderOptions = (): Array<{label: string, value: TokenProvider
   return [
     { label: 'OpenAI', value: TokenProvider.OPENAI },
     { label: 'Azure OpenAI', value: TokenProvider.AZURE_OPENAI },
+    { label: 'Google Gemini', value: TokenProvider.GEMINI },  // 添加Gemini选项
     // 可以根据需要添加更多选项
   ];
 };

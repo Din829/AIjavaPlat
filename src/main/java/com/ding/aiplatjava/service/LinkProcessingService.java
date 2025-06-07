@@ -67,4 +67,11 @@ public interface LinkProcessingService {
      * @return 异步处理结果
      */
     CompletableFuture<Void> processLinkAsync(String taskId, LinkProcessRequestDto requestDto, Long userId);
+
+    /**
+     * 检查链接处理相关微服务的健康状态
+     *
+     * @return 包含各微服务健康状态的Map
+     */
+    java.util.Map<String, Object> checkServiceHealth();
 }

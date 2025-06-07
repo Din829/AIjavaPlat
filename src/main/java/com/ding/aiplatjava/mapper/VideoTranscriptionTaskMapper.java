@@ -71,13 +71,13 @@ public interface VideoTranscriptionTaskMapper {
      * @param taskId 任务ID（UUID）
      * @param videoTitle 视频标题
      * @param videoDescription 视频描述
-     * @param videoDuration 视频时长（秒）
+     * @param videoDuration 视频时长（秒），支持小数点精度
      * @return 影响的行数
      */
     int updateVideoMetadata(@Param("taskId") String taskId, 
                            @Param("videoTitle") String videoTitle, 
                            @Param("videoDescription") String videoDescription, 
-                           @Param("videoDuration") Integer videoDuration);
+                           @Param("videoDuration") Double videoDuration);
 
     /**
      * 更新任务结果

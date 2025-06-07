@@ -5,6 +5,7 @@ import com.ding.aiplatjava.dto.LinkProcessResponseDto;
 import com.ding.aiplatjava.entity.User;
 import com.ding.aiplatjava.service.LinkProcessingService;
 import com.ding.aiplatjava.service.UserService;
+import com.ding.aiplatjava.service.LinkAnalysisService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -16,6 +17,8 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 
 /**
  * 链接处理控制器
@@ -29,6 +32,71 @@ public class LinkProcessingController {
 
     private final LinkProcessingService linkProcessingService;
     private final UserService userService;
+    private final LinkAnalysisService linkAnalysisService;
+
+    /**
+     * 分析链接类型和支持情况
+     * 用于前端在用户输入URL后立即获取链接分析结果
+     * 
+     * @param requestBody 包含url字段的请求体
+     * @return 链接分析结果
+     */
+    @PostMapping("/analyze")
+    public ResponseEntity<Map<String, Object>> analyzeLink(@RequestBody Map<String, String> requestBody) {
+        try {
+            String url = requestBody.get("url");
+            if (url == null || url.trim().isEmpty()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "URL不能为空");
+            }
+
+            User currentUser = getCurrentUser();
+            log.info("收到链接分析请求: {}, 用户: {}", url, currentUser.getUsername());
+
+            // 1. 检测链接类型
+            String contentType = linkAnalysisService.detectContentType(url);
+            
+            // 2. 检查URL可访问性
+            boolean isAccessible = linkAnalysisService.isUrlAccessible(url);
+            
+            // 3. 提取标题/元数据
+            String title = "";
+            String description = "";
+            String platform = "";
+            
+            if ("VIDEO".equals(contentType)) {
+                Map<String, Object> metadata = linkAnalysisService.extractVideoMetadata(url);
+                title = (String) metadata.getOrDefault("title", "待提取");
+                description = (String) metadata.getOrDefault("description", "");
+                platform = (String) metadata.getOrDefault("platform", "Unknown");
+            } else {
+                title = linkAnalysisService.extractWebPageTitle(url);
+                platform = "Web";
+            }
+
+            // 4. 构建响应
+            Map<String, Object> response = new HashMap<>();
+            response.put("linkType", contentType);
+            response.put("platform", platform);
+            response.put("title", title);
+            response.put("description", description);
+            response.put("isSupported", isAccessible);
+            response.put("message", 
+                contentType.equals("VIDEO") ? 
+                    (isAccessible ? "支持的视频链接，可以进行转写处理" : "视频链接暂时无法访问") :
+                    (isAccessible ? "支持的网页链接，可以进行摘要处理" : "网页链接暂时无法访问")
+            );
+
+            log.info("链接分析完成: {} -> {}", url, contentType);
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("分析链接时发生错误: {}", requestBody.get("url"), e);
+            throw new ResponseStatusException(
+                HttpStatus.INTERNAL_SERVER_ERROR, 
+                "分析链接时发生错误: " + e.getMessage()
+            );
+        }
+    }
 
     /**
      * 处理链接（网页或视频）
@@ -118,36 +186,45 @@ public class LinkProcessingController {
     }
 
     /**
-     * 获取用户的所有任务
+     * 获取任务详情（前端兼容性端点）
+     * 为了与前端的API调用保持一致
      * 
-     * @return 用户的任务列表
+     * @param taskId 任务ID
+     * @return 完整的任务详情和结果
      */
-    @GetMapping("/tasks")
-    public ResponseEntity<List<LinkProcessResponseDto>> getUserTasks() {
+    @GetMapping("/task/{taskId}")
+    public ResponseEntity<LinkProcessResponseDto> getTaskDetail(@PathVariable String taskId) {
         try {
             User currentUser = getCurrentUser();
-            log.debug("获取用户任务列表请求, 用户: {}", currentUser.getUsername());
+            log.debug("获取任务详情请求: {}, 用户: {}", taskId, currentUser.getUsername());
             
-            List<LinkProcessResponseDto> tasks = linkProcessingService.getUserTasks(currentUser.getId());
-            return ResponseEntity.ok(tasks);
+            // 优先返回完整结果，如果任务未完成则返回状态
+            LinkProcessResponseDto response = linkProcessingService.getTaskResult(taskId, currentUser.getId());
+            return ResponseEntity.ok(response);
             
         } catch (Exception e) {
-            log.error("获取用户任务列表时发生错误", e);
+            log.error("获取任务详情时发生错误: {}", taskId, e);
+            
+            if (e.getMessage().contains("不存在或无权访问")) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "任务不存在或无权访问");
+            }
+            
             throw new ResponseStatusException(
                 HttpStatus.INTERNAL_SERVER_ERROR, 
-                "获取任务列表失败: " + e.getMessage()
+                "获取任务详情失败: " + e.getMessage()
             );
         }
     }
 
     /**
-     * 删除用户的任务
+     * 删除指定任务（前端兼容性端点）
+     * 为了与前端的API调用保持一致
      * 
      * @param taskId 任务ID
      * @return 删除结果
      */
-    @DeleteMapping("/tasks/{taskId}")
-    public ResponseEntity<Void> deleteTask(@PathVariable String taskId) {
+    @DeleteMapping("/task/{taskId}")
+    public ResponseEntity<Void> deleteTaskById(@PathVariable String taskId) {
         try {
             User currentUser = getCurrentUser();
             log.info("删除任务请求: {}, 用户: {}", taskId, currentUser.getUsername());
@@ -174,6 +251,50 @@ public class LinkProcessingController {
     }
 
     /**
+     * 获取用户的所有任务
+     * 
+     * @return 用户的任务列表
+     */
+    @GetMapping("/tasks")
+    public ResponseEntity<List<LinkProcessResponseDto>> getUserTasks() {
+        try {
+            User currentUser = getCurrentUser();
+            log.debug("获取用户任务列表请求, 用户: {}", currentUser.getUsername());
+            
+            List<LinkProcessResponseDto> tasks = linkProcessingService.getUserTasks(currentUser.getId());
+            return ResponseEntity.ok(tasks);
+            
+        } catch (Exception e) {
+            log.error("获取用户任务列表时发生错误", e);
+            throw new ResponseStatusException(
+                HttpStatus.INTERNAL_SERVER_ERROR, 
+                "获取任务列表失败: " + e.getMessage()
+            );
+        }
+    }
+
+    /**
+     * 检查链接处理相关微服务的健康状态
+     *
+     * @return 各微服务的健康状态
+     */
+    @GetMapping("/health")
+    public ResponseEntity<Map<String, Object>> checkServiceHealth() {
+        try {
+            User currentUser = getCurrentUser(); // 确保是认证用户访问
+            log.debug("服务健康检查请求, 用户: {}", currentUser.getUsername());
+            Map<String, Object> healthStatus = linkProcessingService.checkServiceHealth();
+            return ResponseEntity.ok(healthStatus);
+        } catch (Exception e) {
+            log.error("检查服务健康状态时发生错误", e);
+            throw new ResponseStatusException(
+                HttpStatus.INTERNAL_SERVER_ERROR,
+                "检查服务健康状态失败: " + e.getMessage()
+            );
+        }
+    }
+
+    /**
      * 获取当前认证用户
      * 
      * @return 当前用户对象
@@ -182,12 +303,10 @@ public class LinkProcessingController {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         String username = authentication.getName();
         
-        User user = userService.findByUsername(username);
-        if (user == null) {
-            log.error("无法找到当前用户: {}", username);
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "用户认证失败");
-        }
-        
-        return user;
+        return userService.findByUsername(username)
+            .orElseThrow(() -> {
+                log.error("无法找到当前用户: {}", username);
+                return new ResponseStatusException(HttpStatus.UNAUTHORIZED, "用户认证失败");
+            });
     }
 }

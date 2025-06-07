@@ -63,9 +63,9 @@ public class VideoTranscriptionTask {
 
     /**
      * 视频时长（秒）
-     * 仅当contentType为VIDEO时有值
+     * 仅当contentType为VIDEO时有值，支持小数点精度
      */
-    private Integer videoDuration;
+    private Double videoDuration;
 
     /**
      * 语言选择

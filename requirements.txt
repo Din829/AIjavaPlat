@@ -21,3 +21,7 @@ python-docx==1.1.2
 
 # 系统依赖支持
 requests==2.32.3
+
+# 视频处理依赖
+yt-dlp==2024.12.13
+faster-whisper==1.1.0

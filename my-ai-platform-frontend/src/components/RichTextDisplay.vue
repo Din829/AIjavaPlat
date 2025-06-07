@@ -26,7 +26,7 @@
 import { computed } from 'vue'
 
 const props = defineProps({
-  text: {
+  content: {
     type: String,
     required: true
   },
@@ -38,7 +38,7 @@ const props = defineProps({
 
 // 解析文本中的图像标记
 const parsedContent = computed(() => {
-  if (!props.text) return []
+  if (!props.content) return []
   
   const segments = []
   const imageRegex = /\[IMAGE:([^:]+):([^\]]+)\]/g
@@ -51,14 +51,14 @@ const parsedContent = computed(() => {
     imageMap[img.image_id] = img
   })
   
-  while ((match = imageRegex.exec(props.text)) !== null) {
+  while ((match = imageRegex.exec(props.content)) !== null) {
     const [fullMatch, imageId, description] = match
     const matchStart = match.index
     const matchEnd = match.index + fullMatch.length
     
     // 添加图像标记前的文本
     if (matchStart > lastIndex) {
-      const textContent = props.text.substring(lastIndex, matchStart)
+      const textContent = props.content.substring(lastIndex, matchStart)
       if (textContent.trim()) {
         segments.push({
           type: 'text',
@@ -86,8 +86,8 @@ const parsedContent = computed(() => {
   }
   
   // 添加最后剩余的文本
-  if (lastIndex < props.text.length) {
-    const remainingText = props.text.substring(lastIndex)
+  if (lastIndex < props.content.length) {
+    const remainingText = props.content.substring(lastIndex)
     if (remainingText.trim()) {
       segments.push({
         type: 'text',
@@ -100,7 +100,7 @@ const parsedContent = computed(() => {
   if (segments.length === 0) {
     segments.push({
       type: 'text',
-      content: props.text
+      content: props.content
     })
   }
   

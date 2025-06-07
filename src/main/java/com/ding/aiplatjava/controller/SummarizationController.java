@@ -74,17 +74,39 @@ public class SummarizationController {
         log.debug("已认证用户ID: {}", currentUserId);
 
         try {
-            // 2. 获取用户的OpenAI API密钥
-            String provider = "openai"; // 指定提供商为OpenAI
-            log.debug("正在获取用户ID: {} 的 {} API密钥", currentUserId, provider);
-            String apiKey = apiTokenService.getDecryptedTokenValueByProvider(currentUserId, provider);
-
-            if (apiKey == null || apiKey.isEmpty()) {
-                log.warn("用户ID: {} 的 {} API密钥为空，将使用全局配置", currentUserId, provider);
-                throw new ResourceNotFoundException("未找到API密钥，请先添加您的OpenAI密钥");
+            // 2. 获取用户的API密钥 - 支持多种AI提供商
+            String userApiKey = null;
+            String aiProvider = null;
+            
+            // 尝试OpenAI
+            try {
+                userApiKey = apiTokenService.getDecryptedTokenValueByProvider(currentUserId, "openai");
+                if (userApiKey != null && !userApiKey.isEmpty()) {
+                    aiProvider = "openai";
+                    log.info("使用用户的OpenAI API Key进行AI总结");
+                }
+            } catch (Exception e) {
+                log.debug("未找到OpenAI Token: {}", e.getMessage());
+            }
+            
+            // 如果OpenAI不可用，尝试Gemini
+            if (userApiKey == null || userApiKey.isEmpty()) {
+                try {
+                    userApiKey = apiTokenService.getDecryptedTokenValueByProvider(currentUserId, "gemini");
+                    if (userApiKey != null && !userApiKey.isEmpty()) {
+                        aiProvider = "gemini";
+                        log.info("使用用户的Gemini API Key进行AI总结");
+                    }
+                } catch (Exception e) {
+                    log.debug("未找到Gemini Token: {}", e.getMessage());
+                }
             }
 
-            log.info("成功获取用户的API密钥");
+            // 如果没有找到任何API Key，返回错误
+            if (userApiKey == null || userApiKey.isEmpty()) {
+                return ResponseEntity.badRequest()
+                    .body(new SummarizationResponseDto("未找到可用的AI API Token，请添加OpenAI或Gemini API Key"));
+            }
 
             // 3. 提取网页文本
             log.debug("正在从URL提取文本: {}", requestDto.getUrl());
@@ -97,7 +119,7 @@ public class SummarizationController {
 
             // 4. 调用 AI 服务进行摘要，传入用户的API密钥
             log.debug("正在调用AI服务进行摘要...");
-            String summary = aiService.summarizeText(webText, apiKey);
+            String summary = aiService.summarizeText(webText, userApiKey);
             log.info("URL摘要生成成功: {}", requestDto.getUrl());
 
             // 5. 构建并返回响应

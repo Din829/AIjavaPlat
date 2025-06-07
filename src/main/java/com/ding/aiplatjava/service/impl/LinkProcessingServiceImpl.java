@@ -2,15 +2,22 @@ package com.ding.aiplatjava.service.impl;
 
 import com.ding.aiplatjava.dto.LinkProcessRequestDto;
 import com.ding.aiplatjava.dto.LinkProcessResponseDto;
+import com.ding.aiplatjava.dto.VideoMetadataDto;
+import com.ding.aiplatjava.dto.TranscriptionResultDto;
 import com.ding.aiplatjava.entity.VideoTranscriptionTask;
 import com.ding.aiplatjava.mapper.VideoTranscriptionTaskMapper;
 import com.ding.aiplatjava.service.LinkAnalysisService;
 import com.ding.aiplatjava.service.LinkProcessingService;
+import com.ding.aiplatjava.service.VideoProcessingService;
+import com.ding.aiplatjava.service.WebContentService;
+import com.ding.aiplatjava.service.AiService;
+import com.ding.aiplatjava.service.ApiTokenService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
+import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -29,6 +36,51 @@ public class LinkProcessingServiceImpl implements LinkProcessingService {
 
     private final VideoTranscriptionTaskMapper taskMapper;
     private final LinkAnalysisService linkAnalysisService;
+    private final VideoProcessingService videoProcessingService;
+    private final WebContentService webContentService;
+    private final AiService aiService;
+    private final ApiTokenService apiTokenService;
+
+    @Override
+    public java.util.Map<String, Object> checkServiceHealth() {
+        log.debug("检查链接处理相关微服务健康状态");
+        java.util.Map<String, Object> healthStatus = new java.util.HashMap<>();
+        
+        boolean videoServiceHealthy = false;
+        boolean whisperServiceHealthy = false;
+        StringBuilder messageBuilder = new StringBuilder();
+        
+        try {
+            videoServiceHealthy = videoProcessingService.isVideoServiceHealthy();
+            if (videoServiceHealthy) {
+                messageBuilder.append("视频服务正常; ");
+            } else {
+                messageBuilder.append("视频服务异常; ");
+            }
+        } catch (Exception e) {
+            log.error("检查视频处理微服务健康状态失败", e);
+            messageBuilder.append("视频服务检查失败: ").append(e.getMessage()).append("; ");
+        }
+
+        try {
+            whisperServiceHealthy = videoProcessingService.isWhisperServiceHealthy();
+            if (whisperServiceHealthy) {
+                messageBuilder.append("转写服务正常; ");
+            } else {
+                messageBuilder.append("转写服务异常; ");
+            }
+        } catch (Exception e) {
+            log.error("检查Whisper转写微服务健康状态失败", e);
+            messageBuilder.append("转写服务检查失败: ").append(e.getMessage()).append("; ");
+        }
+        
+        // 返回前端期望的格式
+        healthStatus.put("videoService", videoServiceHealthy);
+        healthStatus.put("whisperService", whisperServiceHealthy);
+        healthStatus.put("message", messageBuilder.toString().trim());
+        
+        return healthStatus;
+    }
 
     @Override
     public LinkProcessResponseDto processLink(LinkProcessRequestDto requestDto, Long userId) {
@@ -171,9 +223,11 @@ public class LinkProcessingServiceImpl implements LinkProcessingService {
 
             log.info("异步处理任务完成: {}", taskId);
 
+        } catch (IOException e) {
+            log.error("异步处理网页链接时发生IO错误: {}, 任务ID: {}", e.getMessage(), taskId, e);
+            taskMapper.updateError(taskId, "处理网页链接IO错误: " + e.getMessage());
         } catch (Exception e) {
-            log.error("异步处理任务时发生错误: {}", taskId, e);
-            // 更新错误状态
+            log.error("异步处理任务时发生其他错误: {}, 任务ID: {}", e.getMessage(), taskId, e);
             taskMapper.updateError(taskId, "处理失败: " + e.getMessage());
         }
 
@@ -182,7 +236,8 @@ public class LinkProcessingServiceImpl implements LinkProcessingService {
 
     /**
      * 处理视频链接
-     * 
+     * 集成视频处理微服务和Whisper转写服务
+     *
      * @param taskId 任务ID
      * @param requestDto 请求DTO
      */
@@ -190,28 +245,81 @@ public class LinkProcessingServiceImpl implements LinkProcessingService {
         try {
             log.info("开始处理视频链接: {}", requestDto.getUrl());
 
-            // 1. 提取视频元数据
-            Map<String, Object> metadata = linkAnalysisService.extractVideoMetadata(requestDto.getUrl());
-            
-            // 2. 更新视频元数据
-            taskMapper.updateVideoMetadata(
-                taskId,
-                (String) metadata.get("title"),
-                (String) metadata.get("description"),
-                (Integer) metadata.get("duration")
+            // 1. 调用视频处理微服务，获取元数据和WAV文件
+            VideoMetadataDto metadata = videoProcessingService.processVideo(
+                requestDto.getUrl(),
+                requestDto.getLanguage()
             );
 
-            // 3. 这里后续会集成视频处理微服务和Whisper转写
-            // 目前先模拟处理结果
-            String mockResult = "视频处理功能正在开发中...";
-            String mockSummary = "这是一个模拟的视频总结结果";
+            if (!metadata.getSuccess()) {
+                throw new RuntimeException("视频处理失败: " + metadata.getErrorMessage());
+            }
 
-            // 4. 更新处理结果
+            // 2. 更新视频元数据到数据库
+            taskMapper.updateVideoMetadata(
+                taskId,
+                metadata.getTitle(),
+                metadata.getDescription(),
+                metadata.getDuration()
+            );
+
+            // 3. 调用Whisper转写服务
+            String fullWavUrl = videoProcessingService.getVideoServiceUrl() + metadata.getWavDownloadUrl();
+            TranscriptionResultDto transcription = videoProcessingService.transcribeAudio(
+                fullWavUrl,
+                metadata,
+                requestDto.getCustomPrompt()
+            );
+
+            // 4. 获取用户的API Token进行AI总结 - 支持多种AI提供商
+            VideoTranscriptionTask task = taskMapper.selectByTaskId(taskId);
+            String userApiKey = null;
+            String aiProvider = null;
+            
+            // 尝试OpenAI
+            try {
+                userApiKey = apiTokenService.getDecryptedTokenValueByProvider(task.getUserId(), "openai");
+                if (userApiKey != null && !userApiKey.isEmpty()) {
+                    aiProvider = "openai";
+                    log.info("使用用户的OpenAI API Key进行AI总结");
+                }
+            } catch (Exception e) {
+                log.debug("未找到OpenAI Token: {}", e.getMessage());
+            }
+            
+            // 如果OpenAI不可用，尝试Gemini
+            if (userApiKey == null || userApiKey.isEmpty()) {
+                try {
+                    userApiKey = apiTokenService.getDecryptedTokenValueByProvider(task.getUserId(), "gemini");
+                    if (userApiKey != null && !userApiKey.isEmpty()) {
+                        aiProvider = "gemini";
+                        log.info("使用用户的Gemini API Key进行AI总结");
+                    }
+                } catch (Exception e) {
+                    log.debug("未找到Gemini Token: {}", e.getMessage());
+                }
+            }
+            
+            // 如果没有找到任何API Key，抛出异常
+            if (userApiKey == null || userApiKey.isEmpty()) {
+                throw new RuntimeException("未找到可用的AI API Token，请添加OpenAI或Gemini API Key");
+            }
+
+            // 5. 调用AI服务进行总结
+            String summary = aiService.summarizeText(
+                "视频标题: " + metadata.getTitle() + "\n\n转写内容: " + transcription.getFullText(),
+                userApiKey
+            );
+
+            // 6. 构建结果JSON
+            String resultJson = transcription.toJson();
+
+            // 7. 更新最终处理结果
             taskMapper.updateResult(
                 taskId,
-                "{\"type\":\"video\",\"status\":\"mock\"}",
-                mockResult,
-                mockSummary,
+                resultJson,
+                transcription.getFullText(),
+                summary,
                 LocalDateTime.now()
             );
 
@@ -225,27 +333,79 @@ public class LinkProcessingServiceImpl implements LinkProcessingService {
 
     /**
      * 处理网页链接
-     * 
+     * 集成现有的网页摘要功能
+     *
      * @param taskId 任务ID
      * @param requestDto 请求DTO
      */
-    private void processWebPageLink(String taskId, LinkProcessRequestDto requestDto) {
+    private void processWebPageLink(String taskId, LinkProcessRequestDto requestDto) throws IOException {
         try {
             log.info("开始处理网页链接: {}", requestDto.getUrl());
 
-            // 1. 提取网页标题
-            String title = linkAnalysisService.extractWebPageTitle(requestDto.getUrl());
+            // 1. 提取网页内容
+            String webContent = webContentService.extractTextFromUrl(requestDto.getUrl());
 
-            // 2. 这里后续会集成现有的网页摘要功能
-            // 目前先模拟处理结果
-            String mockSummary = "这是一个模拟的网页摘要结果，标题: " + title;
+            if (webContent == null || webContent.trim().isEmpty()) {
+                throw new RuntimeException("无法提取网页内容");
+            }
 
-            // 3. 更新处理结果
+            // 2. 获取用户的API Token进行AI总结 - 支持多种AI提供商
+            VideoTranscriptionTask task = taskMapper.selectByTaskId(taskId);
+            String userApiKey = null;
+            String aiProvider = null;
+            
+            // 尝试OpenAI
+            try {
+                userApiKey = apiTokenService.getDecryptedTokenValueByProvider(task.getUserId(), "openai");
+                if (userApiKey != null && !userApiKey.isEmpty()) {
+                    aiProvider = "openai";
+                    log.info("使用用户的OpenAI API Key进行AI总结");
+                }
+            } catch (Exception e) {
+                log.debug("未找到OpenAI Token: {}", e.getMessage());
+            }
+            
+            // 如果OpenAI不可用，尝试Gemini
+            if (userApiKey == null || userApiKey.isEmpty()) {
+                try {
+                    userApiKey = apiTokenService.getDecryptedTokenValueByProvider(task.getUserId(), "gemini");
+                    if (userApiKey != null && !userApiKey.isEmpty()) {
+                        aiProvider = "gemini";
+                        log.info("使用用户的Gemini API Key进行AI总结");
+                    }
+                } catch (Exception e) {
+                    log.debug("未找到Gemini Token: {}", e.getMessage());
+                }
+            }
+            
+            // 如果没有找到任何API Key，抛出异常
+            if (userApiKey == null || userApiKey.isEmpty()) {
+                throw new RuntimeException("未找到可用的AI API Token，请添加OpenAI或Gemini API Key");
+            }
+
+            // 3. 构建总结内容
+            String contentToSummarize = webContent;
+            if (requestDto.getCustomPrompt() != null && !requestDto.getCustomPrompt().isEmpty()) {
+                contentToSummarize = "用户指令: " + requestDto.getCustomPrompt() + "\n\n网页内容: " + webContent;
+            }
+
+            // 4. 调用AI服务进行总结
+            String summary = aiService.summarizeText(contentToSummarize, userApiKey);
+
+            // 5. 构建结果JSON
+            String resultJson = String.format(
+                "{\"type\":\"webpage\",\"url\":\"%s\",\"content_length\":%d,\"summary_length\":%d}",
+                requestDto.getUrl(),
+                webContent.length(),
+                summary.length()
+            );
+
+            // 6. 更新处理结果
             taskMapper.updateResult(
                 taskId,
-                "{\"type\":\"webpage\",\"title\":\"" + title + "\"}",
-                null, // 网页没有转写文本
-                mockSummary,
+                resultJson,
+                null, // 网页没有转写文本，但内容存储在summary中
+                summary,
                 LocalDateTime.now()
             );
 

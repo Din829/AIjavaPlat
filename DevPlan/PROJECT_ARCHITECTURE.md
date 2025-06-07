@@ -1,450 +1,375 @@
-# 社内業務サポートAIプラットフォーム (内部业务支持AI平台) - 项目架构文档
+# AI业务支持平台 - 后端架构图
 
-## 项目概述
+## 项目结构架构（精确到方法）
+```
+AIplatJava/src/main/java/com/ding/aiplatjava/
+├── config/                        # Spring Boot配置类
+│   ├── MyBatisConfig.java         # MyBatis数据库配置
+│   │   └── sqlSessionFactory()   # 创建SQL会话工厂
+│   ├── OcrConfig.java             # OCR服务配置
+│   │   ├── ocrServiceUrl()        # OCR服务URL配置
+│   │   └── restTemplate()         # HTTP客户端配置
+│   ├── SecurityConfig.java        # Spring Security安全配置
+│   │   ├── filterChain()          # 配置安全过滤链
+│   │   └── passwordEncoder()      # 密码加密器配置
+│   └── VideoProcessingConfig.java # 视频处理微服务配置
+│       ├── videoProcessingRestTemplate() # 视频处理服务HTTP客户端
+│       ├── whisperServiceRestTemplate() # Whisper服务HTTP客户端
+│       └── configureTimeouts()    # 配置超时设置
+├── controller/                    # REST API控制器层
+│   ├── ApiTokenController.java    # API Token管理控制器
+│   │   ├── getCurrentUserTokens() # 获取当前用户所有Token
+│   │   ├── createToken()          # 创建新的API Token
+│   │   └── deleteToken()          # 删除指定Token
+│   ├── AuthController.java        # 用户认证控制器
+│   │   ├── login()                # 用户登录端点
+│   │   └── register()             # 用户注册端点
+│   ├── LinkProcessingController.java # 链接处理控制器
+│   │   ├── analyzeLink()          # 分析链接类型和支持情况
+│   │   ├── processLink()          # 提交链接处理任务
+│   │   ├── getTaskDetail()        # 获取任务详情
+│   │   ├── getUserTasks()         # 获取用户任务列表
+│   │   ├── deleteTask()           # 删除处理任务
+│   │   └── checkServiceHealth()   # 检查微服务健康状态
+│   ├── OcrController.java         # OCR文档处理控制器
+│   │   ├── uploadFile()           # 上传文件并开始OCR
+│   │   ├── getTaskStatus()        # 获取OCR任务状态
+│   │   └── getTaskResult()        # 获取OCR处理结果
+│   ├── PromptController.java      # Prompt管理控制器
+│   │   ├── getCurrentUserPrompts() # 获取用户Prompt列表
+│   │   ├── getPromptById()        # 根据ID获取Prompt
+│   │   ├── createPrompt()         # 创建新Prompt
+│   │   ├── updatePrompt()         # 更新现有Prompt
+│   │   └── deletePrompt()         # 删除Prompt
+│   ├── SummarizationController.java # 网页摘要控制器
+│   │   └── summarizeContent()     # 网页内容摘要端点
+│   └── UserController.java        # 用户信息控制器
+│       └── getCurrentUser()       # 获取当前登录用户信息
+├── entity/                        # 数据库实体类
+│   ├── ApiToken.java              # API Token实体
+│   │   ├── getId()                # 获取Token ID
+│   │   ├── getUserId()            # 获取用户ID
+│   │   ├── getProvider()          # 获取提供商名称
+│   │   └── getTokenValue()        # 获取Token值
+│   ├── OcrTask.java               # OCR任务实体
+│   │   ├── getTaskId()            # 获取任务ID
+│   │   ├── getUserId()            # 获取用户ID
+│   │   ├── getStatus()            # 获取任务状态
+│   │   └── getResult()            # 获取处理结果
+│   ├── Prompt.java                # Prompt实体
+│   │   ├── getId()                # 获取Prompt ID
+│   │   ├── getUserId()            # 获取用户ID
+│   │   ├── getTitle()             # 获取Prompt标题
+│   │   └── getContent()           # 获取Prompt内容
+│   ├── User.java                  # 用户实体
+│   │   ├── getId()                # 获取用户ID
+│   │   ├── getUsername()          # 获取用户名
+│   │   ├── getEmail()             # 获取邮箱
+│   │   └── getPassword()          # 获取密码哈希
+│   └── VideoTranscriptionTask.java # 视频转写任务实体
+│       ├── getId()                # 获取任务ID
+│       ├── getTaskId()            # 获取任务UUID
+│       ├── getUrl()               # 获取处理URL
+│       ├── getContentType()       # 获取内容类型
+│       ├── getStatus()            # 获取任务状态
+│       └── getResult()            # 获取处理结果
+├── mapper/                        # MyBatis数据访问层
+│   ├── ApiTokenMapper.java        # API Token数据访问
+│   │   ├── selectById()           # 根据ID查询Token
+│   │   ├── selectByUserId()       # 根据用户ID查询
+│   │   ├── insert()               # 插入新Token
+│   │   └── deleteByIdAndUserId()  # 删除用户Token
+│   ├── OcrTaskMapper.java         # OCR任务数据访问
+│   │   ├── selectByTaskId()       # 根据任务ID查询
+│   │   ├── insert()               # 插入新任务
+│   │   ├── updateStatus()         # 更新任务状态
+│   │   ├── updateResult()         # 更新处理结果
+│   │   └── updateError()          # 更新错误信息
+│   ├── PromptMapper.java          # Prompt数据访问
+│   │   ├── selectById()           # 根据ID查询Prompt
+│   │   ├── selectByUserId()       # 根据用户ID查询
+│   │   ├── insert()               # 插入新Prompt
+│   │   ├── updateById()           # 更新Prompt
+│   │   └── deleteById()           # 删除Prompt
+│   ├── UserMapper.java            # 用户数据访问
+│   │   ├── selectById()           # 根据ID查询用户
+│   │   ├── selectByUsername()     # 根据用户名查询
+│   │   ├── selectByEmail()        # 根据邮箱查询
+│   │   └── insert()               # 插入新用户
+│   └── VideoTranscriptionTaskMapper.java # 视频转写任务数据访问
+│       ├── selectById()           # 根据ID查询任务
+│       ├── selectByTaskId()       # 根据任务UUID查询
+│       ├── selectByUserId()       # 根据用户ID查询
+│       ├── insert()               # 插入新任务
+│       ├── updateStatus()         # 更新任务状态
+│       └── updateResult()         # 更新处理结果
+├── security/                      # Spring Security安全组件
+│   └── JwtAuthFilter.java         # JWT认证过滤器
+│       ├── doFilterInternal()     # 执行JWT认证逻辑
+│       ├── getJwtFromRequest()    # 从请求中提取JWT
+│       └── validateToken()        # 验证JWT有效性
+├── service/                       # 业务逻辑服务接口层
+│   ├── AiService.java             # AI服务接口
+│   │   ├── summarizeContent()     # 内容摘要接口
+│   │   ├── summarizeText()        # 文本摘要接口
+│   │   └── analyzeContent()       # 内容分析接口
+│   ├── ApiTokenService.java       # API Token服务接口
+│   │   ├── createToken()          # 创建Token接口
+│   │   ├── getTokensByUserId()    # 获取用户Token接口
+│   │   ├── getDecryptedTokenValue() # 获取解密Token值接口
+│   │   ├── getDecryptedTokenValueByProvider() # 根据提供商获取Token
+│   │   └── deleteToken()          # 删除Token接口
+│   ├── LinkAnalysisService.java   # 链接分析服务接口
+│   │   ├── analyzeUrl()           # 分析URL类型接口
+│   │   ├── isVideoUrl()           # 判断是否视频链接
+│   │   ├── extractWebPageTitle()  # 提取网页标题
+│   │   └── getContentType()       # 获取内容类型
+│   ├── LinkProcessingService.java # 链接处理服务接口
+│   │   ├── analyzeLink()          # 分析链接类型和支持情况
+│   │   ├── processLink()          # 处理链接接口
+│   │   ├── getTaskDetail()        # 获取任务详情接口
+│   │   ├── getUserTasks()         # 获取用户任务接口
+│   │   ├── deleteTask()           # 删除任务接口
+│   │   └── checkServiceHealth()   # 检查微服务健康状态
+│   ├── VideoProcessingService.java # 视频处理服务接口
+│   │   ├── processVideo()         # 处理视频获取元数据
+│   │   ├── transcribeAudio()      # 转写音频
+│   │   ├── processVideoComplete() # 完整视频处理流程
+│   │   ├── checkVideoServiceHealth() # 检查视频服务健康状态
+│   │   ├── checkWhisperServiceHealth() # 检查Whisper服务健康状态
+│   │   └── getVideoServiceUrl()   # 获取视频服务URL
+│   ├── OcrService.java            # OCR服务接口
+│   │   ├── uploadAndProcess()     # 上传并处理文档接口
+│   │   ├── processOcrTaskAsync()  # 异步处理OCR任务
+│   │   ├── getTaskStatus()        # 获取任务状态接口
+│   │   └── getTaskResult()        # 获取处理结果接口
+│   ├── PromptService.java         # Prompt服务接口
+│   │   ├── getPromptById()        # 根据ID获取Prompt
+│   │   ├── getPromptsByUserId()   # 获取用户Prompt列表
+│   │   ├── createPrompt()         # 创建Prompt接口
+│   │   ├── updatePrompt()         # 更新Prompt接口
+│   │   └── deletePrompt()         # 删除Prompt接口
+│   ├── UserService.java           # 用户服务接口
+│   │   ├── registerUser()         # 用户注册接口
+│   │   ├── findByUsername()       # 根据用户名查找
+│   │   ├── findByEmail()          # 根据邮箱查找
+│   │   └── findById()             # 根据ID查找用户
+│   └── WebContentService.java     # 网页内容服务接口
+│       ├── fetchWebContent()      # 获取网页内容接口
+│       ├── extractText()          # 提取文本内容
+│       └── parseHtml()            # 解析HTML内容
+├── service/impl/                  # 业务逻辑服务实现层
+│   ├── AiServiceImpl.java         # AI服务实现
+│   │   ├── summarizeContent()     # 调用AI进行内容摘要
+│   │   ├── summarizeText()        # 调用AI进行文本摘要
+│   │   ├── analyzeContent()       # 调用AI进行内容分析
+│   │   └── buildPrompt()          # 构建AI提示词
+│   ├── ApiTokenServiceImpl.java   # API Token服务实现
+│   │   ├── createToken()          # 创建并加密存储Token
+│   │   ├── getTokensByUserId()    # 获取用户Token列表
+│   │   ├── getDecryptedTokenValue() # 解密获取Token值
+│   │   ├── getDecryptedTokenValueByProvider() # 根据提供商获取Token
+│   │   ├── deleteToken()          # 删除Token实现
+│   │   └── convertToDto()         # 转换为DTO对象
+│   ├── LinkAnalysisServiceImpl.java # 链接分析服务实现
+│   │   ├── analyzeUrl()           # 分析URL类型实现
+│   │   ├── isVideoUrl()           # 视频链接判断实现
+│   │   ├── extractWebPageTitle()  # 提取网页标题实现
+│   │   ├── getContentType()       # 内容类型获取实现
+│   │   └── extractMetadata()      # 提取元数据信息
+│   ├── LinkProcessingServiceImpl.java # 链接处理服务实现
+│   │   ├── analyzeLink()          # 分析链接类型和支持情况
+│   │   ├── processLink()          # 处理链接实现
+│   │   ├── processVideoLink()     # 处理视频链接
+│   │   ├── processWebPageLink()   # 处理网页链接
+│   │   ├── getTaskDetail()        # 获取任务详情实现
+│   │   ├── getUserTasks()         # 获取用户任务实现
+│   │   ├── deleteTask()           # 删除任务实现
+│   │   ├── checkServiceHealth()   # 检查微服务健康状态
+│   │   └── convertToResponseDto() # 转换为响应DTO
+│   ├── VideoProcessingServiceImpl.java # 视频处理服务实现
+│   │   ├── processVideo()         # 处理视频获取元数据
+│   │   ├── transcribeAudio()      # 转写音频实现
+│   │   ├── processVideoComplete() # 完整视频处理流程
+│   │   ├── checkVideoServiceHealth() # 检查视频服务健康状态
+│   │   ├── checkWhisperServiceHealth() # 检查Whisper服务健康状态
+│   │   ├── downloadWavFile()      # 下载WAV音频文件
+│   │   └── getVideoServiceUrl()   # 获取视频服务URL
+│   ├── OcrProcessingServiceImpl.java # OCR处理服务实现
+│   │   ├── processFile()          # 文件处理实现
+│   │   ├── detectFileType()       # 文件类型检测
+│   │   ├── callPythonService()    # 调用Python微服务
+│   │   └── handleResponse()       # 处理响应结果
+│   ├── OcrServiceImpl.java        # OCR服务实现
+│   │   ├── uploadAndProcess()     # 上传处理实现
+│   │   ├── processOcrTaskAsync()  # 异步OCR任务处理
+│   │   ├── getTaskStatus()        # 任务状态获取实现
+│   │   ├── getTaskResult()        # 结果获取实现
+│   │   └── saveTaskResult()       # 保存任务结果
+│   ├── PromptServiceImpl.java     # Prompt服务实现
+│   │   ├── getPromptById()        # 根据ID获取实现
+│   │   ├── getPromptsByUserId()   # 用户Prompt列表获取
+│   │   ├── createPrompt()         # 创建Prompt实现
+│   │   ├── updatePrompt()         # 更新Prompt实现
+│   │   ├── deletePrompt()         # 删除Prompt实现
+│   │   └── validateOwnership()    # 验证所有权
+│   ├── UserDetailsServiceImpl.java # Spring Security用户详情服务
+│   │   ├── loadUserByUsername()   # 根据用户名加载用户
+│   │   └── createUserDetails()    # 创建用户详情对象
+│   ├── UserServiceImpl.java       # 用户服务实现
+│   │   ├── registerUser()         # 用户注册实现
+│   │   ├── findByUsername()       # 用户名查找实现
+│   │   ├── findByEmail()          # 邮箱查找实现
+│   │   ├── findById()             # ID查找实现
+│   │   └── encodePassword()       # 密码加密处理
+│   └── WebContentServiceImpl.java # 网页内容服务实现
+│       ├── fetchWebContent()      # 网页内容获取实现
+│       ├── extractText()          # 文本提取实现
+│       ├── parseHtml()            # HTML解析实现
+│       └── cleanContent()         # 内容清理处理
+├── dto/                           # 数据传输对象
+│   ├── LinkAnalysisResponseDto.java # 链接分析响应DTO
+│   │   ├── getLinkType()          # 获取链接类型
+│   │   ├── getPlatform()          # 获取平台信息
+│   │   ├── getTitle()             # 获取标题
+│   │   ├── getDescription()       # 获取描述
+│   │   ├── getIsSupported()       # 获取是否支持
+│   │   └── getMessage()           # 获取消息
+│   ├── LinkProcessRequestDto.java # 链接处理请求DTO
+│   │   ├── getUrl()               # 获取URL
+│   │   ├── getLanguage()          # 获取语言
+│   │   └── getCustomPrompt()      # 获取自定义提示词
+│   ├── LinkProcessResponseDto.java # 链接处理响应DTO
+│   │   ├── getTaskId()            # 获取任务ID
+│   │   ├── getStatus()            # 获取状态
+│   │   ├── getContentType()       # 获取内容类型
+│   │   ├── getUrl()               # 获取URL
+│   │   ├── getVideoTitle()        # 获取视频标题
+│   │   ├── getVideoDescription()  # 获取视频描述
+│   │   ├── getVideoDuration()     # 获取视频时长
+│   │   ├── getSummaryText()       # 获取摘要文本
+│   │   ├── getTranscriptionText() # 获取转写文本
+│   │   ├── getDetailedResult()    # 获取详细结果
+│   │   ├── getErrorMessage()      # 获取错误信息
+│   │   ├── getCreatedAt()         # 获取创建时间
+│   │   ├── getCompletedAt()       # 获取完成时间
+│   │   └── getMessage()           # 获取消息
+│   ├── TranscriptionResultDto.java # 转写结果DTO
+│   │   ├── getLanguage()          # 获取语言
+│   │   ├── getLanguageProbability() # 获取语言概率
+│   │   ├── getSegments()          # 获取分段信息
+│   │   ├── getFullText()          # 获取完整文本
+│   │   └── getProcessingInfo()    # 获取处理信息
+│   └── VideoMetadataDto.java     # 视频元数据DTO
+│       ├── getVideoId()           # 获取视频ID
+│       ├── getTitle()             # 获取标题
+│       ├── getDescription()       # 获取描述
+│       ├── getDuration()          # 获取时长
+│       ├── getPlatform()          # 获取平台
+│       ├── getWavDownloadUrl()    # 获取WAV下载URL
+│       ├── getSuccess()           # 获取成功状态
+│       └── getErrorMessage()      # 获取错误信息
+└── util/                          # 工具类
+    ├── EncryptionUtil.java        # 加密工具类
+    │   ├── encrypt()              # AES加密方法
+    │   ├── decrypt()              # AES解密方法
+    │   └── generateKey()          # 生成加密密钥
+    └── JwtUtil.java               # JWT工具类
+        ├── generateToken()        # 生成JWT Token
+        ├── validateToken()        # 验证Token有效性
+        ├── getUsernameFromToken() # 从Token提取用户名
+        ├── getExpirationDateFromToken() # 获取Token过期时间
+        └── isTokenExpired()       # 检查Token是否过期
+```
 
-本项目旨在构建一个基于Web的平台，利用AI能力，为用户提供处理公开信息的辅助工具，提高个人工作效率。平台不处理任何公司内部或客户的敏感数据。用户需要提供自己的AI服务API Token来驱动AI功能。
+## 数据库表结构
+```
+Database: aiplatform              # AI平台数据库
+├── users                         # 用户信息表
+│   ├── id (BIGINT, PK)          # 用户主键ID
+│   ├── username (VARCHAR)        # 用户名，唯一
+│   ├── email (VARCHAR)           # 邮箱，唯一
+│   ├── password (VARCHAR)        # 密码哈希
+│   ├── created_at (DATETIME)     # 创建时间
+│   └── updated_at (DATETIME)     # 更新时间
+├── api_tokens                    # API Token表
+│   ├── id (BIGINT, PK)          # Token主键ID
+│   ├── user_id (BIGINT, FK)     # 用户外键
+│   ├── provider (VARCHAR)        # 提供商名称
+│   ├── token_value (VARCHAR)     # 加密的Token值
+│   ├── created_at (DATETIME)     # 创建时间
+│   └── updated_at (DATETIME)     # 更新时间
+├── prompts                       # Prompt模板表
+│   ├── id (BIGINT, PK)          # Prompt主键ID
+│   ├── user_id (BIGINT, FK)     # 用户外键
+│   ├── title (VARCHAR)           # Prompt标题
+│   ├── content (TEXT)            # Prompt内容
+│   ├── category (VARCHAR)        # 分类标签
+│   ├── created_at (DATETIME)     # 创建时间
+│   └── updated_at (DATETIME)     # 更新时间
+├── ocr_tasks                     # OCR处理任务表
+│   ├── task_id (VARCHAR, PK)    # 任务UUID主键
+│   ├── user_id (BIGINT, FK)     # 用户外键
+│   ├── file_name (VARCHAR)       # 原始文件名
+│   ├── file_size (BIGINT)        # 文件大小字节
+│   ├── status (VARCHAR)          # 任务状态
+│   ├── result (TEXT)             # JSON格式结果
+│   ├── error_message (TEXT)      # 错误信息
+│   ├── created_at (DATETIME)     # 创建时间
+│   └── completed_at (DATETIME)   # 完成时间
+└── video_transcription_tasks     # 视频转写任务表
+    ├── id (BIGINT, PK)          # 任务主键ID
+    ├── user_id (BIGINT, FK)     # 用户外键
+    ├── task_id (VARCHAR, UNIQUE) # 任务UUID，唯一
+    ├── url (VARCHAR)             # 处理的URL链接
+    ├── content_type (VARCHAR)    # 内容类型：WEBPAGE/VIDEO
+    ├── status (VARCHAR)          # 任务状态
+    ├── video_title (VARCHAR)     # 视频标题
+    ├── video_description (TEXT)  # 视频描述
+    ├── video_duration (INT)      # 视频时长秒数
+    ├── language (VARCHAR)        # 处理语言
+    ├── custom_prompt (TEXT)      # 自定义提示词
+    ├── result_json (LONGTEXT)    # 完整结果JSON
+    ├── transcription_text (LONGTEXT) # 转写文本
+    ├── summary_text (TEXT)       # AI总结文本
+    ├── created_at (DATETIME)     # 创建时间
+    ├── updated_at (DATETIME)     # 更新时间
+    ├── completed_at (DATETIME)   # 完成时间
+    └── error_message (TEXT)      # 错误信息
+```
 
-## 部署模式
-
-Web SaaS (Software as a Service)
+## 微服务架构
+```
+Python微服务生态                  # 外部处理服务集群
+├── OCR微服务 (端口: 9001)        # 文档OCR处理服务
+│   ├── /process                  # 文档处理端点
+│   │   ├── process_pdf()         # PDF文档处理
+│   │   ├── process_image()       # 图像OCR处理
+│   │   ├── process_excel()       # Excel文件处理
+│   │   ├── process_word()        # Word文档处理
+│   │   └── process_text_file()   # 文本文件处理
+│   └── /health                   # 健康检查端点
+│       └── get_status()          # 获取服务状态
+├── 视频处理微服务 (端口: 9002)    # 视频处理服务
+│   ├── /process-video            # 视频处理端点
+│   │   ├── download_video()      # 视频下载处理
+│   │   ├── extract_metadata()    # 提取视频元数据
+│   │   ├── convert_audio()       # 音频格式转换
+│   │   └── upload_to_storage()   # 上传到存储服务
+│   └── /health                   # 健康检查端点
+│       └── get_status()          # 获取服务状态
+└── Whisper转写微服务 (端口: 9999) # 语音转写服务
+    ├── /transcribe               # 语音转写端点
+    │   ├── load_whisper_model()  # 加载Whisper模型
+    │   ├── transcribe_audio()    # 语音转文字
+    │   ├── segment_audio()       # 音频分段处理
+    │   └── enhance_with_prompt() # 使用自定义prompt增强
+    └── /health                   # 健康检查端点
+        └── get_status()          # 获取服务状态
+```
 
 ## 技术栈
-
-- **后端**:
-  - 语言: Java 21
-  - 框架: Spring Boot 3.4.5
-  - 数据库: MySQL 8.0
-  - ORM: MyBatis 3.0.3
-  - 安全: Spring Security, JWT
-  - AI集成: Spring AI (OpenAI)
-  - 构建工具: Maven
-  - 其他: Jsoup (HTML解析), Spring Validation (数据校验)
-
-- **前端** (计划中):
-  - 语言: TypeScript
-  - 框架: Vue.js
-  - 构建工具: npm/yarn
-
-- **部署**:
-  - 容器化: Docker
-  - Web服务器: Nginx (计划中)
-
-## 项目结构
-
-```
-AIplatJava/
-├── src/
-│   ├── main/
-│   │   ├── java/
-│   │   │   └── com/ding/aiplatjava/      # Java源代码根目录
-│   │   │       ├── config/           # Spring Boot 配置类 (如MyBatis, Security等)
-│   │   │       ├── controller/       # Spring MVC 控制器 (处理HTTP请求)
-│   │   │       ├── dto/              # 数据传输对象 (用于API请求/响应)
-│   │   │       ├── entity/           # 数据库实体类 (映射数据库表)
-│   │   │       ├── exception/        # 自定义异常类及全局异常处理器
-│   │   │       ├── mapper/           # MyBatis Mapper 接口
-│   │   │       ├── security/         # Spring Security 相关实现 (JWT过滤器等)
-│   │   │       ├── service/          # 业务逻辑服务层接口
-│   │   │       │   └── impl/         # 业务逻辑服务层实现 (含UserDetailsService)
-│   │   │       ├── util/             # 通用工具类 (含JwtUtil)
-│   │   │       └── AIplatJavaApplication.java  # Spring Boot 主应用启动类
-│   │   └── resources/                # 资源文件目录
-│   │       ├── db/                   # 数据库脚本 (如 schema.sql)
-│   │       ├── mapper/               # MyBatis XML 映射文件
-│   │       │   ├── PromptMapper.xml
-│   │       │   ├── ApiTokenMapper.xml
-│   │       │   └── OcrTaskMapper.xml
-│   │       ├── static/               # 静态资源 (如HTML, CSS, JS) (计划中)
-│   │       ├── templates/            # 服务端模板 (如Thymeleaf) (计划中)
-│   │       └── application.properties # Spring Boot 应用配置文件
-│   └── test/                         # 测试代码根目录
-│       └── java/
-│           └── com/ding/aiplatjava/      # 测试代码包结构
-│               ├── controller/       # 控制器测试 (待添加)
-│               ├── security/         # Security组件测试
-│               │   └── JwtAuthFilterTest.java
-│               ├── service/
-│               │   └── impl/         # 服务实现测试
-│               │       ├── PromptServiceImplTest.java
-│               │       ├── ApiTokenServiceImplTest.java
-│               │       └── UserDetailsServiceImplTest.java
-│               ├── util/             # 工具类测试
-│               │   ├── EncryptionUtilTest.java
-│               │   └── JwtUtilTest.java
-│               └── AIplatJavaApplicationTests.java # Spring Boot 上下文加载测试
-├── pom.xml                           # Maven项目配置文件
-├── docker-compose.yml                # Docker Compose 配置文件
-├── PROJECT_ARCHITECTURE.md           # 项目架构文档 (本文档)
-├── DEVELOPMENT_PLAN.md               # 开发计划
-└── PROGRESS_SUMMARY.md               # 进度总结
-```
-
-## 核心功能模块
-
-### 1. 用户认证与管理 (User Auth & Management)
-
-**职责**:
-- 用户注册、登录、登出
-- 用户信息管理
-- 权限控制 (通过JWT)
-
-**主要组件**:
-- `entity.User`: 用户实体类
-- `mapper.UserMapper`: 用户数据访问接口
-- `service.UserService`: 用户服务接口 (含 `registerUser`)
-- `service.impl.UserServiceImpl`: 用户服务实现 (含密码加密)
-- `service.impl.UserDetailsServiceImpl`: Spring Security 用户详情服务实现
-- `controller.UserController`: 用户信息查询API (待移除或改造)
-- `controller.AuthController`: 认证API (登录`/api/auth/login`, 注册`/api/auth/register`)
-- `dto.UserDto`: 用户数据传输对象
-- `dto.UserRegistrationDto`: 用户注册数据传输对象
-- `dto.LoginRequestDto`: 登录请求DTO
-- `dto.RegisterRequestDto`: 注册请求DTO
-- `dto.AuthResponseDto`: 认证响应DTO (含JWT)
-- `config.SecurityConfig`: Spring Security核心配置
-- `security.JwtAuthFilter`: JWT认证过滤器
-- `util.JwtUtil`: JWT生成与验证工具类
-
-### 2. API Token 安全管理 (Secure API Token Management)
-
-**职责**:
-- 安全存储用户的AI服务API Token
-- 提供Token的加密和解密功能
-- 管理Token的生命周期
-
-**主要组件**:
-- `entity.ApiToken`: API Token实体类 (使用 Lombok)
-- `mapper.ApiTokenMapper`: Token数据访问接口
-    - `ApiToken selectById(Long id)`: 根据ID查询 ApiToken。
-    - `List<ApiToken> selectByUserId(Long userId)`: 根据用户ID查询该用户的所有 ApiTokens。
-    - `int insert(ApiToken apiToken)`: 插入新的 ApiToken。
-    - `int deleteByIdAndUserId(Long id, Long userId)`: 根据 Token ID 和用户 ID 删除 ApiToken。
-- `service.ApiTokenService`: Token服务接口
-    - `ApiToken createToken(ApiToken apiToken, Long userId)`: 创建新的 API Token (加密)。
-    - `List<ApiToken> getTokensByUserId(Long userId)`: 获取指定用户的所有 API Tokens (加密状态)。
-    - `String getDecryptedTokenValue(Long tokenId, Long userId)`: 根据 Token ID 获取解密后的 Token 值 (校验权限)。
-    - `boolean deleteToken(Long tokenId, Long userId)`: 删除指定 ID 的 API Token (校验权限)。
-- `service.impl.ApiTokenServiceImpl`: Token服务实现 (实现 `ApiTokenService` 接口)
-- `controller.ApiTokenController`: Token相关API
-    - `ResponseEntity<List<ApiTokenDto>> getCurrentUserTokens()`: 获取当前用户的所有 API Tokens (仅含安全信息)。
-    - `ResponseEntity<ApiTokenDto> createToken(ApiTokenDto tokenDto)`: 为当前用户创建新的 API Token。
-    - `ResponseEntity<Void> deleteToken(Long id)`: 删除指定 ID 的 API Token。
-    - `(private) ApiTokenDto convertToDto(ApiToken apiToken)`: 内部转换方法。
-- `dto.ApiTokenDto`: API Token 数据传输对象 (用于API交互, 不含Token值)。
-- `util.EncryptionUtil`: 加密工具类
-    - `String encrypt(String plainText)`: AES加密。
-    - `String decrypt(String encryptedText)`: AES解密。
-
-### 3. Prompt 管理 (Prompt Management)
-
-**职责**:
-- 提供Prompt的CRUD操作
-- 管理用户的Prompt集合
-
-**主要组件**:
-- `entity.Prompt`: Prompt实体类 (使用 Lombok)
-- `mapper.PromptMapper`: Prompt数据访问接口
-    - `Prompt selectById(Long id)`: 根据ID查询Prompt
-    - `List<Prompt> selectByUserId(Long userId)`: 根据用户ID查询该用户的所有Prompt
-    - `int insert(Prompt prompt)`: 插入新的Prompt
-    - `int updateById(Prompt prompt)`: 根据ID更新Prompt
-    - `int deleteById(Long id, Long userId)`: 根据ID删除Prompt (会校验用户ID)
-- `service.PromptService`: Prompt服务接口
-    - `Prompt getPromptById(Long id, Long userId)`: 根据ID获取Prompt (校验用户)
-    - `List<Prompt> getPromptsByUserId(Long userId)`: 获取指定用户的所有Prompt
-    - `Prompt createPrompt(Prompt prompt, Long userId)`: 创建新的Prompt
-    - `Prompt updatePrompt(Long id, Prompt prompt, Long userId)`: 更新现有的Prompt (校验用户)
-    - `boolean deletePrompt(Long id, Long userId)`: 删除Prompt (校验用户)
-- `service.impl.PromptServiceImpl`: Prompt服务实现 (实现 `PromptService` 接口)
-- `controller.PromptController`: Prompt相关API
-    - `ResponseEntity<List<Prompt>> getCurrentUserPrompts()`: 获取当前用户的所有Prompts
-    - `ResponseEntity<Prompt> getPromptById(Long id)`: 根据ID获取单个Prompt
-    - `ResponseEntity<Prompt> createPrompt(Prompt prompt)`: 创建新的Prompt
-    - `ResponseEntity<Prompt> updatePrompt(Long id, Prompt promptDetails)`: 更新现有的Prompt
-    - `ResponseEntity<Void> deletePrompt(Long id)`: 删除Prompt
-
-### 4. 网页内容摘要 (Web Article Summarization)
-
-**职责**:
-- 获取和解析网页内容
-- 调用AI服务进行内容摘要
-- 返回处理结果
-
-**主要组件**:
-- `service.WebContentService`: 网页内容服务接口
-- `service.impl.WebContentServiceImpl`: 网页内容服务实现 (使用 Jsoup)
-- `service.AiService`: AI服务接口
-- `service.impl.AiServiceImpl`: AI服务实现 (使用 Spring AI ChatModel)
-- `controller.SummarizationController`: 摘要相关API (处理 `/api/summarize` POST 请求)
-- `dto.SummarizationRequestDto`: 摘要请求DTO (包含 URL)
-- `dto.SummarizationResponseDto`: 摘要响应DTO (包含摘要结果)
-
-### 5. OCR文档处理 (OCR Document Processing)
-
-**职责**:
-- 接收用户上传的文档
-- 异步处理OCR任务
-- 与Python OCR微服务通信
-- 管理OCR任务状态和结果
-- 返回处理结果
-
-**主要组件**:
-- `entity.OcrTask`: OCR任务实体类
-- `mapper.OcrTaskMapper`: OCR任务数据访问接口
-  - `OcrTask selectByTaskId(String taskId)`: 根据任务ID查询OCR任务
-  - `int insert(OcrTask ocrTask)`: 插入新的OCR任务
-  - `int updateStatus(String taskId, String status)`: 更新OCR任务状态
-  - `int updateResult(String taskId, String result, LocalDateTime completedAt)`: 更新OCR任务结果
-  - `int updateError(String taskId, String errorMessage)`: 更新OCR任务错误信息
-- `service.OcrService`: OCR服务接口
-  - `OcrResponseDto uploadAndProcess(MultipartFile file, OcrUploadRequestDto requestDto, Long userId)`: 上传并处理文档
-  - `CompletableFuture<OcrResponseDto> processOcrTaskAsync(String taskId, String filePath, Long userId, OcrUploadRequestDto requestDto)`: 异步处理OCR任务
-  - `OcrResponseDto getTaskStatus(String taskId)`: 获取OCR任务状态
-  - `OcrResponseDto getTaskResult(String taskId)`: 获取OCR任务结果
-- `service.impl.OcrServiceImpl`: OCR服务实现
-- `service.OcrProcessingService`: OCR处理服务接口
-  - `CompletableFuture<Map<String, Object>> processFile(Path filePath, Map<String, Object> options)`: 处理文件
-- `service.impl.OcrProcessingServiceImpl`: OCR处理服务实现 (与Python微服务通信)
-- `controller.OcrController`: OCR相关API
-  - `ResponseEntity<OcrResponseDto> uploadFile(MultipartFile file, OcrUploadRequestDto requestDto)`: 上传文件并处理
-  - `ResponseEntity<OcrResponseDto> getTaskStatus(String taskId)`: 获取任务状态
-  - `ResponseEntity<OcrResponseDto> getTaskResult(String taskId)`: 获取任务结果
-- `dto.OcrUploadRequestDto`: OCR上传请求DTO
-- `dto.OcrResponseDto`: OCR响应DTO
-- `dto.OcrTaskStatusDto`: OCR任务状态DTO
-
-## 数据库设计 (初步)
-
-### 用户表 (users)
-- id: bigint (PK)
-- username: varchar(50)
-- email: varchar(100)
-- password: varchar(255) (加密存储)
-- created_at: datetime
-- updated_at: datetime
-
-### API Token表 (api_tokens)
-- id: bigint (PK)
-- user_id: bigint (FK -> users.id)
-- provider: varchar(50) (如 "openai")
-- token_value: varchar(255) (加密存储)
-- created_at: datetime
-- updated_at: datetime
-
-### Prompt表 (prompts)
-- id: bigint (PK)
-- user_id: bigint (FK -> users.id)
-- title: varchar(100)
-- content: text
-- category: varchar(50)
-- created_at: datetime
-- updated_at: datetime
-
-### OCR任务表 (ocr_tasks)
-- task_id: varchar(36) (PK, UUID)
-- user_id: bigint (FK -> users.id)
-- file_name: varchar(255)
-- file_size: bigint
-- status: varchar(20) (如 "PENDING", "PROCESSING", "COMPLETED", "FAILED")
-- result: text (JSON格式，存储OCR处理结果)
-- error_message: text (存储错误信息，如果有)
-- created_at: datetime
-- completed_at: datetime
-
-### 视频转写任务表 (video_transcription_tasks)
-- id: bigint (PK, 自增)
-- user_id: bigint (FK -> users.id)
-- task_id: varchar(36) (UNIQUE, UUID)
-- url: varchar(2048) (处理的URL链接)
-- content_type: varchar(20) (内容类型：WEBPAGE, VIDEO)
-- status: varchar(20) (任务状态：PENDING, PROCESSING, COMPLETED, FAILED)
-- video_title: varchar(500) (视频标题)
-- video_description: text (视频描述)
-- video_duration: int (视频时长，秒)
-- language: varchar(10) (语言选择，默认auto)
-- custom_prompt: text (自定义prompt)
-- result_json: longtext (完整处理结果，JSON格式)
-- transcription_text: longtext (转写文本，仅视频)
-- summary_text: text (AI总结文本)
-- created_at: datetime
-- updated_at: datetime
-- completed_at: datetime
-- error_message: text (错误信息，如果有)
-
-## 安全考虑
-
-1. 所有API Token使用强加密算法存储
-2. 使用HTTPS保护所有通信
-3. 实现适当的输入验证和清理
-4. 使用JWT进行无状态认证
-5. 实施适当的访问控制和权限检查
-
-## 开发路线图
-
-### 阶段1: 基础设施和核心功能
-- 设置项目结构和依赖
-- 实现数据库模型和迁移
-- 开发用户认证系统
-- 实现API Token管理
-
-### 阶段2: 核心业务功能
-- 开发Prompt管理功能
-- 实现网页内容获取和解析
-- 集成AI服务
-- 开发网页摘要功能
-
-### 阶段3: 前端开发和集成
-- 设计和实现用户界面
-- 集成前后端
-- 实现响应式设计
-
-### 阶段4: 测试、优化和部署
-- 编写单元测试和集成测试
-- 性能优化
-- 部署配置
-- 用户文档
-
-## 注意事项
-
-- 本项目不处理任何公司内部或客户的敏感数据
-- 用户需要提供自己的AI服务API Token
-- 所有功能应遵循最小权限原则
-- 代码应遵循良好的编码实践和设计模式
-
-## 📈 架构更新记录
-
-### ✅ Excel文件支持（2025-01-27）
-
-**后端架构扩展**：
-- **依赖新增**：添加Apache POI库支持（poi-ooxml, poi-scratchpad）
-- **文件类型检测**：扩展`OcrProcessingServiceImpl`支持Excel格式识别
-- **处理引擎**：新增Excel文本提取功能，支持多工作表处理
-
-**Python微服务扩展**：
-- **依赖新增**：添加pandas、openpyxl、xlrd等Excel处理库
-- **处理函数**：新增`process_excel`函数，支持Excel文件解析
-- **API扩展**：更新OCR上传端点，支持Excel文件类型检测和处理
-
-**前端架构扩展**：
-- **文件类型支持**：更新文件上传组件，支持.xlsx/.xls/.xlsm格式
-- **用户界面**：更新上传提示文本，包含Excel文件格式说明
-
-**支持的文档格式**：
-- ✅ PDF文档：PyPDF2 + Docling + Gemini Vision OCR
-- ✅ 图片文件：PNG, JPG, JPEG, TIFF, BMP（Docling + Gemini）
-- ✅ Excel文件：.xlsx, .xls, .xlsm（Apache POI + pandas）
-- ✅ Word文档：.docx, .doc（Apache POI + python-docx）
-- ✅ 文本文件：.txt, .md, .rtf（多编码支持）
-- ✅ 表格文件：.csv, .tsv（智能解析）
-- 📋 PowerPoint：.pptx, .ppt（计划中）
-
-**技术栈更新**：
-- Java后端：Spring Boot 3.4.5 + Apache POI 5.2.5
-- Python微服务：FastAPI + pandas 2.1.0 + openpyxl 3.1.0 + python-docx
-- 前端：Vue 3 + TypeScript（支持7种主要文档格式）
-
-### ✅ Word文档和文本文件支持（2025-01-27）
-
-**后端架构扩展**：
-- **Word文档处理**：
-  - Java层：Apache POI XWPF（.docx）和HWPF（.doc）API
-  - Python层：python-docx库作为备用处理引擎
-  - 功能：段落提取、表格解析、格式保持
-- **文本文件处理**：
-  - 多编码自动检测：UTF-8, GBK, GB2312, UTF-16, Latin-1
-  - CSV/TSV智能解析：分隔符识别、表格结构化
-  - Markdown和RTF格式支持
-
-**Python微服务扩展**：
-- **新增处理函数**：
-  - `process_word()`：Word文档文本和表格提取
-  - `process_text_file()`：文本文件多编码处理
-- **API端点扩展**：更新文件类型检测，支持6种新格式
-- **服务状态更新**：版本号升级至1.3.0
-
-**前端架构扩展**：
-- **文件类型支持**：扩展至7种主要格式
-- **用户界面**：更新上传提示和文件类型说明
-- **统一体验**：所有文件类型使用相同的处理界面
-
-### ✅ 富文本显示功能实现（2025-01-27）
-
-**架构重大更新**：实现图像在文本内容中的正确位置显示 ⭐
-
-**后端架构扩展**：
-- **Python微服务增强**：
-  - 图像提取逻辑优化：在文本中插入`[IMAGE:id:description]`位置标记
-  - 全文重构功能：重新构建包含图像标记的完整文本内容
-  - 图像数据管理：维护图像ID与Base64数据的映射关系
-
-**前端架构扩展**：
-- **组件架构升级**：
-  - 新增`RichTextDisplay.vue`可复用组件
-  - 实现图像标记解析引擎（正则表达式驱动）
-  - 混合内容渲染系统：文本段落与图像按序显示
-- **用户体验革新**：
-  - 图像内嵌显示：替代传统的分离式标签页显示
-  - 响应式图像布局：自适应不同屏幕尺寸
-  - 错误处理机制：图像加载失败时的优雅降级
-
-**技术实现细节**：
-- **标记系统**：`[IMAGE:imageId:description]`格式的文本标记
-- **解析算法**：正则表达式匹配和内容分段处理
-- **渲染引擎**：Vue 3组合式API + TypeScript类型安全
-- **样式系统**：CSS Grid/Flexbox响应式布局
-
-**架构影响**：
-- **组件复用性**：RichTextDisplay可用于其他需要富文本显示的场景
-- **扩展性**：标记系统可扩展支持其他媒体类型（视频、音频等）
-- **性能优化**：图像懒加载和错误处理机制
-
-### ✅ 链接转写服务基础架构（2025-01-28）
-
-**架构重大扩展**：实现统一的链接处理服务，支持网页摘要和视频转写 ⭐
-
-**数据库架构扩展**：
-- **新增数据表**：`video_transcription_tasks`表
-  - 支持网页和视频两种内容类型的统一管理
-  - 完整的任务状态跟踪：PENDING → PROCESSING → COMPLETED/FAILED
-  - 视频特有字段：标题、描述、时长（用于Whisper转写精度增强）
-  - 处理选项：语言选择、自定义prompt支持
-  - 结果存储：转写文本、AI总结、完整JSON结果
-
-**后端架构扩展**：
-- **实体层新增**：
-  - `VideoTranscriptionTask.java`：链接处理任务实体类
-  - 包含内容类型和状态常量定义，遵循项目编码规范
-- **DTO层新增**：
-  - `LinkProcessRequestDto.java`：链接处理请求DTO（含验证注解）
-  - `LinkProcessResponseDto.java`：统一响应DTO（支持多种构造方式）
-- **数据访问层新增**：
-  - `VideoTranscriptionTaskMapper.java`：完整的数据访问接口
-  - `VideoTranscriptionTaskMapper.xml`：详细的SQL映射文件
-- **服务层新增**：
-  - `LinkProcessingService.java`：主要业务逻辑接口
-  - `LinkAnalysisService.java`：链接分析服务接口
-  - `LinkProcessingServiceImpl.java`：异步处理实现
-  - `LinkAnalysisServiceImpl.java`：智能链接类型识别
-- **控制器层新增**：
-  - `LinkProcessingController.java`：完整的REST API端点
-
-**技术架构特点**：
-- **异步处理机制**：复用OCR服务的成熟异步架构模式
-- **智能链接识别**：支持YouTube、Bilibili等主流视频平台自动识别
-- **安全性设计**：所有操作包含用户ID验证，确保数据隔离
-- **扩展性架构**：为后续微服务集成预留接口和实现空间
-
-**API端点设计**：
-```
-POST /api/link-processing/process     # 提交链接处理任务
-GET  /api/link-processing/status/{id} # 获取任务状态
-GET  /api/link-processing/result/{id} # 获取任务结果
-GET  /api/link-processing/tasks       # 获取用户任务列表
-DELETE /api/link-processing/tasks/{id} # 删除任务
-```
-
-**架构准备状态**：
-- ✅ **Phase 1完成**：基础架构和数据模型
-- 🔄 **Phase 2计划**：视频处理微服务集成
-- 🔄 **Phase 3计划**：Whisper转写服务集成
-- 🔄 **Phase 4计划**：前端界面开发
+- **后端**: Spring Boot 3.4.5 + Java 21 + MySQL 8.0 + MyBatis
+- **安全**: Spring Security + JWT + AES加密
+- **AI集成**: Spring AI + Gemini API
+- **微服务**: Python FastAPI + Docker 

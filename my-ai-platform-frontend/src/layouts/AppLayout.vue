@@ -67,7 +67,7 @@ import type { DropdownOption, MenuOption } from 'naive-ui'; // 单独导入类�
 import { ref } from 'vue';
 import { onMounted } from 'vue';
 import { NLayout, NLayoutHeader, NLayoutSider, NLayoutContent, NLayoutFooter, NMenu, NButton, NSpace, NIcon } from 'naive-ui';
-import { AlbumsOutline, ReaderOutline, DocumentTextOutline } from '@vicons/ionicons5'; // 引入图标
+import { AlbumsOutline, ReaderOutline, DocumentTextOutline, LinkOutline } from '@vicons/ionicons5'; // 引入图标
 
 const router = useRouter();
 const authStore = useAuthStore();
@@ -121,6 +121,15 @@ const menuOptions: MenuOption[] = [
     ),
     key: 'ocr',
     icon: () => h(NIcon, null, { default: () => h(DocumentTextOutline) })
+  },
+  {
+    label: () => h(
+      RouterLink,
+      { to: { name: 'LinkProcessing' } },
+      { default: () => '智能链接处理' }
+    ),
+    key: 'link-processing',
+    icon: () => h(NIcon, null, { default: () => h(LinkOutline) })
   }
 ];
 
